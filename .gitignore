@@ -1,0 +1,36 @@
+# ── Python / Backend ──
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.env
+*.log
+
+# ── Databases & Dynamic Data ──
+# Không commit dữ liệu sinh ra trong quá trình chạy
+backend/site-a/data/*.db
+backend/site-b/data/*.db
+backend/coordinator/data/*.db
+backend/coordinator/data/*.json
+!backend/coordinator/data/ground_truth.json
+
+# ── Node / Frontend ──
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+frontend/.eslintcache
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# ── Docker ──
+.docker-volumes/
+
+# ── OS / IDE ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
