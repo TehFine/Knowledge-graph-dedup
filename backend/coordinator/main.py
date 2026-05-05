@@ -629,26 +629,87 @@ async def topology_clusters():
     return {"total": len(comps), "clusters": clusters}
 
 @app.get("/graph/data")
-async def graph_data():
-    """Return full graph data for 3D visualization."""
+async def graph_data(mode: str = "linked"):
+    """
+    Return graph data based on processing stage:
+    - raw: Two separate sites, internal links only.
+    - linked: Sites connected via SAME_AS edges.
+    - merged: Duplicates collapsed into single super-nodes.
+    """
     if not _graph_cache:
         await _build_graph()
     
-    nodes = []
-    for n, d in _graph_cache.nodes(data=True):
-        nodes.append({
-            "id": n,
-            "site": d.get("site", "unknown"),
-            "val": 1 + _graph_cache.degree(n) * 0.5  # Size based on degree
-        })
+    G = _graph_cache
     
-    links = []
-    for u, v, d in _graph_cache.edges(data=True):
-        links.append({
-            "source": u,
-            "target": v,
-            "type": d.get("type", "co_author"),
-            "score": d.get("score", 1.0)
-        })
-    
-    return {"nodes": nodes, "links": links}
+    if mode == "raw":
+        # Filter out SAME_AS edges
+        nodes = []
+        for n, d in G.nodes(data=True):
+            nodes.append({"id": n, "site": d.get("site", "unknown"), "val": 1 + G.degree(n)})
+        links = []
+        for u, v, d in G.edges(data=True):
+            if d.get("type") != "same_as":
+                links.append({"source": u, "target": v, "type": d.get("type"), "score": 1.0})
+        return {"nodes": nodes, "links": links}
+
+    elif mode == "linked":
+        # Return everything as is (what we had before)
+        nodes = [{"id": n, "site": d.get("site", "unknown"), "val": 1 + G.degree(n)} for n, d in G.nodes(data=True)]
+        links = [{"source": u, "target": v, "type": d.get("type"), "score": d.get("score", 1.0)} for u, v, d in G.edges(data=True)]
+        return {"nodes": nodes, "links": links}
+
+    elif mode == "merged":
+        # Identify clusters of duplicates using SAME_AS edges
+        same_as_subgraph = nx.Graph([(u, v) for u, v, d in G.edges(data=True) if d.get("type") == "same_as"])
+        clusters = list(nx.connected_components(same_as_subgraph))
+        
+        # Mapping from original node ID to cluster ID
+        node_to_cluster = {}
+        for i, cluster in enumerate(clusters):
+            cluster_id = f"merged_{i}"
+            for node in cluster:
+                node_to_cluster[node] = cluster_id
+        
+        # Build merged graph data
+        merged_nodes = {}
+        merged_links = set()
+        
+        # Add all nodes (either as clusters or original singletons)
+        for n, d in G.nodes(data=True):
+            cid = node_to_cluster.get(n, n)
+            if cid not in merged_nodes:
+                merged_nodes[cid] = {
+                    "id": cid,
+                    "site": "merged" if cid.startswith("merged_") else d.get("site"),
+                    "source_ids": [n] if cid.startswith("merged_") else [n],
+                    "val": 0
+                }
+            elif cid.startswith("merged_") and n not in merged_nodes[cid]["source_ids"]:
+                merged_nodes[cid]["source_ids"].append(n)
+
+        # Add links, mapping them to cluster IDs
+        for u, v, d in G.edges(data=True):
+            if d.get("type") == "same_as":
+                continue # These are now collapsed
+            
+            cu = node_to_cluster.get(u, u)
+            cv = node_to_cluster.get(v, v)
+            
+            if cu != cv:
+                # Add link between clusters (or cluster and node)
+                pair = tuple(sorted((cu, cv)))
+                merged_links.add(pair)
+        
+        # Final formatting
+        nodes_list = list(merged_nodes.values())
+        # Calculate degree for sizing
+        for n_obj in nodes_list:
+            n_id = n_obj["id"]
+            deg = sum(1 for p in merged_links if n_id in p)
+            n_obj["val"] = 2 + deg * 0.8
+            
+        links_list = [{"source": u, "target": v, "type": "co_author", "score": 1.0} for u, v in merged_links]
+        
+        return {"nodes": nodes_list, "links": links_list}
+
+    return {"error": "Invalid mode"}
