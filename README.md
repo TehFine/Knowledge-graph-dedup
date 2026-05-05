@@ -1,171 +1,92 @@
-# Knowledge Graph Entity Resolution
+# Knowledge Graph Entity Resolution & 3D Visualization
 ## Distributed Data De-duplication for Scientific Papers
 
+Hệ thống hợp nhất thực thể (Entity Resolution) trên Đồ thị Tri thức phân tán, hỗ trợ trực quan hóa 3D và phân tích topology sâu.
+
 ---
 
-## Cấu trúc project
+## 🚀 Cấu trúc Project
 
-```
+```text
 knowledge-graph-dedup/
-├── data-pipeline/
-│   ├── generate_dataset.py     ← Tạo dataset 5400 papers
-│   ├── requirements.txt
-│   └── output/                 ← Sau khi chạy script
-│       ├── site_a.db           (2700 papers - DBLP)
-│       ├── site_b.db           (2700 papers - Semantic Scholar)
-│       └── ground_truth.json   (800 duplicate pairs)
-│
+├── data-pipeline/      ← Script sinh dữ liệu mẫu (SQLite)
 ├── backend/
-│   ├── requirements.txt
-│   ├── site-a/
-│   │   ├── main.py             ← FastAPI (port 8001)
-│   │   └── Dockerfile
-│   ├── site-b/
-│   │   ├── main.py             ← FastAPI (port 8002)
-│   │   └── Dockerfile
-│   └── coordinator/
-│       ├── main.py             ← Entity resolution engine (port 8000)
-│       └── Dockerfile
-│
-├── frontend/
-│   ├── src/App.jsx             ← React dashboard
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── Dockerfile
-│   └── nginx.conf
-│
-└── docker-compose.yml          ← Chạy tất cả bằng 1 lệnh
+│   ├── site-a/         ← DBLP Node (FastAPI)
+│   ├── site-b/         ← Semantic Scholar Node (FastAPI)
+│   └── coordinator/    ← Entity Resolution Engine (Central Mediator)
+├── frontend/           ← React + Vite + ForceGraph3D Dashboard
+└── docker-compose.yml  ← Orchestration
 ```
 
 ---
 
-## BƯỚC 1 — Tạo Dataset
+## 🛠 Hướng dẫn Chạy Hệ thống (Clone & Run)
 
+### 1. Chuẩn bị Dữ liệu
+Trước khi chạy Docker, bạn cần tạo dữ liệu mẫu SQLite:
 ```bash
 cd data-pipeline
 pip install -r requirements.txt
 python generate_dataset.py
 ```
+*Lệnh này sẽ tạo ra 5400 papers chia cho 2 site và 800 cặp trùng lặp thật trong thư mục `output/`.*
 
-Output:
-- `output/site_a.db` — 2700 papers từ DBLP
-- `output/site_b.db` — 2700 papers từ Semantic Scholar (800 papers trùng với site A, tên biến thể)
-- `output/ground_truth.json` — 800 cặp duplicate thật (dùng tính F1)
-
----
-
-## BƯỚC 2 — Chạy toàn bộ hệ thống với Docker
-
+### 2. Khởi chạy với Docker
+Quay lại thư mục gốc và chạy:
 ```bash
-# Từ thư mục gốc
 docker compose up --build
 ```
 
-Sau khi build xong (~3–5 phút lần đầu):
-
-| Service | URL | Mô tả |
-|---|---|---|
-| Frontend | http://localhost:3000 | Dashboard React |
-| Coordinator | http://localhost:8000 | API engine |
-| Site A (DBLP) | http://localhost:8001 | Data node A |
-| Site B (Semantic Scholar) | http://localhost:8002 | Data node B |
+### 3. Truy cập Dashboard
+Sau khi hệ thống khởi động thành công:
+- **Frontend Dashboard:** [http://localhost:3000](http://localhost:3000)
+- **Coordinator API:** [http://localhost:8000](http://localhost:8000)
 
 ---
 
-## BƯỚC 3 — Sử dụng Dashboard
+## 🖥 Khám phá Giao diện (UI Features)
 
-1. Mở http://localhost:3000
-2. Kiểm tra 3 status dot trên header đều **ONLINE** (xanh)
-3. Bấm **▶ START RESOLUTION**
-4. Chuyển sang tab **Resolution** để xem log real-time
-5. Sau khi xong → tab **Results** và **Metrics** để xem kết quả
+Dashboard được thiết kế với phong cách hiện đại, cung cấp cái nhìn toàn diện về quá trình xử lý dữ liệu phân tán:
 
----
-
-## DEMO FAILURE CASE (Quan trọng cho chấm điểm)
-
-### Giảng viên tắt Site B:
-
-```bash
-# Terminal 2 — trong khi resolution đang chạy
-docker stop kg_site_b
-```
-
-Hệ thống sẽ:
-1. Coordinator nhận timeout error HTTP thật
-2. Log hiện: "Site B unreachable"
-3. Queue jobs của year đang xử lý vào `pending_queue.json`
-4. Tiếp tục với các year khác (partial mode)
-
-### Khôi phục:
-
-```bash
-docker start kg_site_b
-```
-
-Hệ thống sẽ:
-1. Phát hiện Site B online trở lại
-2. Retry các jobs trong queue
-3. Tiếp tục resolution bình thường
+1.  **Dashboard:** Tổng quan các chỉ số (Stats Cards), danh sách các cặp trùng lặp hàng đầu (Top Merges) và trạng thái hàng đợi failure recovery.
+2.  **Resolution:** Điều khiển trung tâm. Bấm `START RESOLUTION` để bắt đầu quá trình so khớp. Log thời gian thực sẽ hiển thị quá trình kết nối tới các Site và xử lý lỗi nếu có.
+3.  **Results:** Danh sách chi tiết kết quả phân loại: `MERGE` (Trùng), `REVIEW` (Nghi vấn), `SEPARATE` (Khác biệt).
+4.  **Metrics:** Biểu đồ Precision/Recall/F1-Score và phân tích Topology (Edge-Cut, Cluster Density).
+5.  **Graph Explorer:** Công cụ phân tích thuật toán đồ thị:
+    - Chạy **BFS/DFS phân tán**.
+    - Tìm **Đường đi ngắn nhất** (Shortest Path) xuyên suốt các site.
+    - Xem **Unified View**: Hợp nhất dữ liệu Relational (SQL), Graph (Network) và Document (JSON) của một thực thể.
+6.  **Graph Visualizer (MỚI):** Trực quan hóa đồ thị 3D tương tác cao với 3 giai đoạn:
+    - **RAW:** Xem 2 site đang tách biệt.
+    - **LINKED:** Xem các liên kết đồng nhất (`SAME_AS`) nối giữa 2 site.
+    - **MERGED:** Xem đồ thị "sạch" sau khi đã gộp các nút trùng thành Super-Nodes.
+7.  **Data Explorer:** Duyệt dữ liệu thô của từng Site theo dạng bảng.
 
 ---
 
-## API Endpoints
+## 🧠 Phân tích Đồ thị Nâng cao
 
-### Coordinator (port 8000)
-
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| GET | `/health` | Kiểm tra coordinator |
-| GET | `/sites/status` | Trạng thái cả 3 sites |
-| POST | `/resolution/start` | Bắt đầu resolution job |
-| GET | `/resolution/status` | Trạng thái job + log |
-| GET | `/resolution/results` | Kết quả phân loại |
-| GET | `/resolution/stats` | Thống kê + topology |
-| GET | `/metrics/f1` | Precision / Recall / F1 |
-| GET | `/queue` | Xem pending queue |
-
-### Site A & B (port 8001/8002)
-
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| GET | `/health` | Kiểm tra site |
-| GET | `/papers?page=1&size=50` | Danh sách papers |
-| GET | `/papers/{id}` | Chi tiết 1 paper |
-| GET | `/authors` | Danh sách authors |
-| GET | `/candidates?year=2021` | Papers theo blocking key |
-| GET | `/stats` | Thống kê site |
+Project áp dụng các lý thuyết từ **Özsu & Valduriez (Distributed Database Systems)**:
+- **Mediator/Wrapper:** Coordinator điều phối các Site API.
+- **Node Collapsing:** Tự động gộp các nút thực thể trùng lặp dựa trên thuật toán Connected Components.
+- **Partitioning Analysis:** So sánh Edge-Cut hiện tại với phân hoạch tối ưu (METIS-style/Kernighan-Lin).
+- **Multi-Model Integration:** Hợp nhất 3 mô hình dữ liệu khác nhau trong một góc nhìn duy nhất.
 
 ---
 
-## Thuật toán Similarity
-
-```
-score = 0.40 × title_similarity
-      + 0.25 × author_similarity
-      + 0.20 × venue_similarity
-      + 0.15 × year_similarity
-
-Nếu DOI trùng → boost score đáng kể (strong signal)
-
-Ngưỡng quyết định:
-  ≥ 0.82  →  MERGE    (gộp node)
-  ≥ 0.62  →  REVIEW   (cần xem lại thủ công)
-  < 0.62  →  SEPARATE (2 entity khác nhau)
-```
+## ⚠️ Demo Failure Handling
+Bạn có thể thử nghiệm tính năng chịu lỗi (Fault Tolerance) của Coordinator:
+1. Khi Resolution đang chạy, gõ: `docker stop kg_site_b`.
+2. Quan sát Coordinator log: Tự động phát hiện lỗi, đưa các công việc bị gián đoạn vào hàng đợi (Queue).
+3. Gõ: `docker start kg_site_b`.
+4. Coordinator sẽ tự động khôi phục và xử lý tiếp các jobs trong hàng đợi.
 
 ---
 
-## Liên hệ Lý thuyết Özsu & Valduriez
-
-| Concept | Chương | Ứng dụng trong project |
-|---|---|---|
-| Horizontal Fragmentation | Ch. 4 | Site A = DBLP fragment, Site B = SemanticScholar fragment |
-| Schema Heterogeneity | Ch. 3 | name vs full_name, venue vs venue+year |
-| Wrapper/Mediator | Ch. 3 | Coordinator = Mediator, Site APIs = Wrappers |
-| Semi-join Optimization | Ch. 6 | Blocking: chỉ gửi candidate keys, không gửi full record |
-| Eventual Consistency | Ch. 8 | SAME_AS edges propagate async sau khi merge |
-| Edge-Cut Ratio | Ch. 4 | Đo % cross-site edges sau resolution |
+## 📊 Chỉ số mục tiêu
+- **F1 Score:** > 85%
+- **Throughput:** > 200 pairs/sec
+- **Edge-Cut:** > 25% (Thể hiện sự kết nối mạnh mẽ giữa các site sau ER)
 
 ---
 
@@ -179,6 +100,7 @@ DB_PATH=../../data-pipeline/output/site_a.db uvicorn main:app --port 8001
 
 # Terminal 2 — Site B
 cd backend/site-b
+pip install -r ../requirements.txt
 DB_PATH=../../data-pipeline/output/site_b.db uvicorn main:app --port 8002
 
 # Terminal 3 — Coordinator
