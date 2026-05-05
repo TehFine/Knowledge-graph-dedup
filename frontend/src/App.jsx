@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { GraphExplorerTab } from "./GraphExplorer";
+import { GraphVisualizer } from "./GraphVisualizer";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -89,7 +90,7 @@ function ScoreBar({ score, decision }) {
 }
 
 // ── TABS ──────────────────────────────────────────────────────
-const TABS = ["Dashboard", "Resolution", "Results", "Metrics", "Graph Explorer", "Data Explorer"];
+const TABS = ["Dashboard", "Resolution", "Results", "Metrics", "Graph Explorer", "Graph Visualizer", "Data Explorer"];
 
 export default function App() {
   const [tab, setTab] = useState("Dashboard");
@@ -570,6 +571,9 @@ export default function App() {
 
         {/* ── GRAPH EXPLORER ── */}
         {tab === "Graph Explorer" && <GraphExplorerTab />}
+
+        {/* ── GRAPH VISUALIZER ── */}
+        {tab === "Graph Visualizer" && <GraphVisualizer />}
 
         {/* ── DATA EXPLORER ── */}
         {tab === "Data Explorer" && (

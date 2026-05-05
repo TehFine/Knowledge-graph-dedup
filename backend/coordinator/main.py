@@ -628,3 +628,27 @@ async def topology_clusters():
         })
     return {"total": len(comps), "clusters": clusters}
 
+@app.get("/graph/data")
+async def graph_data():
+    """Return full graph data for 3D visualization."""
+    if not _graph_cache:
+        await _build_graph()
+    
+    nodes = []
+    for n, d in _graph_cache.nodes(data=True):
+        nodes.append({
+            "id": n,
+            "site": d.get("site", "unknown"),
+            "val": 1 + _graph_cache.degree(n) * 0.5  # Size based on degree
+        })
+    
+    links = []
+    for u, v, d in _graph_cache.edges(data=True):
+        links.append({
+            "source": u,
+            "target": v,
+            "type": d.get("type", "co_author"),
+            "score": d.get("score", 1.0)
+        })
+    
+    return {"nodes": nodes, "links": links}
