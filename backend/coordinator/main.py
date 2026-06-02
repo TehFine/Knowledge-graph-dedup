@@ -31,7 +31,19 @@ GT_FILE = os.path.join(DATA_DIR, "ground_truth.json")
 
 TIMEOUT = 5.0  # giây timeout mỗi request tới site
 
-app = FastAPI(title="Coordinator — Entity Resolution", version="2.0")
+tags_metadata = [
+    {"name": "System", "description": "Kiểm tra trạng thái hệ thống và các node"},
+    {"name": "Entity Resolution", "description": "Quản lý và theo dõi tiến trình khử trùng lặp (Record Linkage)"},
+    {"name": "Graph Engine & Topology", "description": "Các thuật toán đồ thị, phân hoạch, và duyệt phân tán"},
+    {"name": "Multi-Model", "description": "Tích hợp dữ liệu đa mô hình"},
+]
+
+app = FastAPI(
+    title="Coordinator — Entity Resolution API",
+    version="2.0",
+    description="Hệ thống điều phối phân giải thực thể (Entity Resolution) và xử lý đồ thị tri thức phân tán (Distributed Knowledge Graph).",
+    openapi_tags=tags_metadata
+)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # Global graph cache
@@ -339,11 +351,11 @@ class StartJobRequest(BaseModel):
     years: list[int] = [2018, 2019, 2020, 2021, 2022, 2023]
     limit_per_year: int = 80
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 def health():
     return {"site": "coordinator", "status": "online", "ts": time.time()}
 
-@app.post("/resolution/start")
+@app.post("/resolution/start", tags=["Entity Resolution"])
 async def start_resolution(req: StartJobRequest, bg: BackgroundTasks):
     if resolution_status["running"]:
         return {"error": "Job already running"}
@@ -361,14 +373,14 @@ async def start_resolution(req: StartJobRequest, bg: BackgroundTasks):
     bg.add_task(run_resolution_job, req.years, req.limit_per_year, job_id)
     return {"job_id": job_id, "status": "started"}
 
-@app.get("/resolution/status")
+@app.get("/resolution/status", tags=["Entity Resolution"])
 def get_status():
     return {
         **resolution_status,
         "log": resolution_status["log"][-50:],  # last 50 log lines
     }
 
-@app.get("/resolution/results")
+@app.get("/resolution/results", tags=["Entity Resolution"])
 def get_results(
     decision: Optional[str] = None,
     page: int = Query(1, ge=1),
@@ -392,7 +404,7 @@ def get_results(
         "data": [dict(r) for r in rows],
     }
 
-@app.get("/resolution/stats")
+@app.get("/resolution/stats", tags=["Entity Resolution"])
 def get_resolution_stats():
     with get_db() as db:
         by_decision = db.execute("""
@@ -429,7 +441,7 @@ def get_resolution_stats():
         "top_merges": [dict(r) for r in top_merges],
     }
 
-@app.get("/sites/status")
+@app.get("/sites/status", tags=["System"])
 async def sites_status():
     async with httpx.AsyncClient() as client:
         a_ok = await check_site(client, SITE_A)
@@ -440,7 +452,7 @@ async def sites_status():
         "coordinator": {"status": "online"},
     }
 
-@app.get("/metrics/f1")
+@app.get("/metrics/f1", tags=["Entity Resolution"])
 def compute_f1():
     """So sánh kết quả với ground truth để tính Precision/Recall/F1"""
     if not os.path.exists(GT_FILE):
@@ -476,7 +488,7 @@ def compute_f1():
         "predicted_total":    len(predicted),
     }
 
-@app.get("/queue")
+@app.get("/queue", tags=["Entity Resolution"])
 def get_queue():
     if not os.path.exists(QUEUE_FILE):
         return {"queue": []}
@@ -507,14 +519,14 @@ async def _build_graph():
     _graph_cache = build_knowledge_graph(edges_a, edges_b, cross)
     return _graph_cache
 
-@app.post("/graph/build")
+@app.post("/graph/build", tags=["Graph Engine & Topology"])
 async def build_graph():
     """Build/rebuild the knowledge graph from site data + resolution results."""
     G = await _build_graph()
     return {"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "status": "built"}
 
 # ── Partitioning ──────────────────────────────────────────────
-@app.get("/partitioning/analyze")
+@app.get("/partitioning/analyze", tags=["Graph Engine & Topology"])
 async def partitioning_analyze():
     """METIS-style partitioning analysis comparing current vs optimal."""
     if not _graph_cache or _graph_cache.number_of_nodes() < 4:
@@ -522,28 +534,28 @@ async def partitioning_analyze():
     return analyze_partitioning(_graph_cache)
 
 # ── Traversal ─────────────────────────────────────────────────
-@app.get("/graph/bfs")
+@app.get("/graph/bfs", tags=["Graph Engine & Topology"])
 async def graph_bfs(start: str, depth: int = Query(3, ge=1, le=6)):
     """Distributed BFS from a paper node."""
     if not _graph_cache:
         await _build_graph()
     return distributed_bfs(_graph_cache, start, depth)
 
-@app.get("/graph/dfs")
+@app.get("/graph/dfs", tags=["Graph Engine & Topology"])
 async def graph_dfs(start: str, depth: int = Query(3, ge=1, le=6)):
     """Distributed DFS from a paper node."""
     if not _graph_cache:
         await _build_graph()
     return distributed_dfs(_graph_cache, start, depth)
 
-@app.get("/graph/path")
+@app.get("/graph/path", tags=["Graph Engine & Topology"])
 async def graph_path(source: str, target: str):
     """Shortest path between two papers across sites."""
     if not _graph_cache:
         await _build_graph()
     return shortest_path(_graph_cache, source, target)
 
-@app.get("/graph/neighbors")
+@app.get("/graph/neighbors", tags=["Graph Engine & Topology"])
 async def graph_neighbors(paper_id: str):
     """Cross-site aware neighbors for a paper."""
     async with httpx.AsyncClient() as client:
@@ -570,7 +582,7 @@ async def graph_neighbors(paper_id: str):
     return results
 
 # ── Multi-Model Integration ──────────────────────────────────
-@app.get("/unified/paper/{paper_id}")
+@app.get("/unified/paper/{paper_id}", tags=["Multi-Model"])
 async def unified_view(paper_id: str):
     """Seamless join: Relational + Graph + Document for one paper."""
     relational, document = {}, {}
@@ -603,14 +615,14 @@ async def unified_view(paper_id: str):
     return unified_paper_view(paper_id, relational, graph_data, document)
 
 # ── Topology ──────────────────────────────────────────────────
-@app.get("/topology/analysis")
+@app.get("/topology/analysis", tags=["Graph Engine & Topology"])
 async def topology_analysis():
     """Deep topology analysis with proper edge-cut and cluster detection."""
     if not _graph_cache or _graph_cache.number_of_nodes() < 2:
         await _build_graph()
     return deep_topology_analysis(_graph_cache)
 
-@app.get("/topology/clusters")
+@app.get("/topology/clusters", tags=["Graph Engine & Topology"])
 async def topology_clusters():
     """List connected components / clusters in the graph."""
     if not _graph_cache:
@@ -628,7 +640,7 @@ async def topology_clusters():
         })
     return {"total": len(comps), "clusters": clusters}
 
-@app.get("/graph/data")
+@app.get("/graph/data", tags=["Graph Engine & Topology"])
 async def graph_data(mode: str = "linked"):
     """
     Return graph data based on processing stage:
