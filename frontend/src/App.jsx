@@ -192,27 +192,72 @@ export default function App() {
         ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:#0a0f18}
         ::-webkit-scrollbar-thumb{background:#1e2d40;border-radius:4px}
         * { box-sizing: border-box; }
+        
+        .tabs-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .tabs-scroll::-webkit-scrollbar { display: none; }
+        .tabs-scroll button { flex-shrink: 0; }
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .stat-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+        .stat-grid > * { flex: 1; min-width: 140px; }
+        .dash-grid, .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .unified-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+        .exp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .mobile-hide { display: initial; }
+        .mobile-status-dots { display: none; }
+        .content-pad { padding: 20px 28px; }
+        
+        @media (max-width: 768px) {
+          .mobile-hide { display: none !important; }
+          .mobile-status-dots { display: flex !important; }
+          .mobile-start-text { display: none !important; }
+          .mobile-start-icon { display: inline !important; }
+          .content-pad { padding: 12px 12px; }
+          .stat-grid > * { min-width: calc(50% - 8px); flex: 1 1 calc(50% - 8px); padding: 12px 14px; }
+          .stat-grid > * > div { min-width: auto !important; }
+          .dash-grid, .metrics-grid { grid-template-columns: 1fr; }
+          .unified-grid { grid-template-columns: 1fr; }
+          .exp-grid { grid-template-columns: 1fr; }
+          .stat-val { font-size: 18px !important; }
+          .header-title { font-size: 16px !important; }
+          .header-sub { font-size: 7px !important; letter-spacing: 2px !important; }
+          .tab-text { font-size: 10px !important; padding: 10px 12px !important; }
+          .header-pad { padding: 12px 16px !important; }
+          .tabs-pad { padding: 0 12px !important; gap: 4px !important; }
+          .data-table { font-size: 9px !important; }
+          .data-table-cell { padding: 6px 8px !important; }
+          .res-header { font-size: 7px !important; padding: 6px 10px !important; letter-spacing: 1px !important; }
+          .res-row { padding: 6px 10px !important; font-size: 9px !important; }
+          .res-grid { grid-template-columns: 1fr 1fr 50px 60px !important; }
+          .filter-btn { padding: 4px 8px !important; font-size: 9px !important; }
+          .page-btn { width: 26px !important; height: 26px !important; font-size: 9px !important; }
+          .legend-text { font-size: 8px !important; }
+          .res-title-a { font-size: 7px !important; }
+          .res-title-b { display: none !important; }
+        }
+        @media (max-width: 480px) {
+          .stat-grid > * { min-width: 100%; flex: 1 1 100%; }
+        }
       `}</style>
 
       {/* STICKY HEADER & TABS WRAPPER */}
       <div style={{ position: "sticky", top: 0, zIndex: 1000, boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
         {/* HEADER */}
-        <div style={{
+        <div className="header-pad" style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "16px 32px", borderBottom: "1px solid #131e2c",
           background: "rgba(10, 18, 30, 0.9)", backdropFilter: "blur(12px)",
         }}>
           <div>
-            <div style={{ fontSize: 9, fontWeight: 600, color: "#4d9fff", letterSpacing: 3, marginBottom: 4 }}>
+            <div className="header-sub" style={{ fontSize: 9, fontWeight: 600, color: "#4d9fff", letterSpacing: 3, marginBottom: 4 }}>
               DISTRIBUTED KNOWLEDGE GRAPH
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "#ffffff", letterSpacing: -0.5 }}>
+            <div className="header-title" style={{ fontSize: 20, fontWeight: 800, color: "#ffffff", letterSpacing: -0.5 }}>
               Entity Resolution <span style={{ color: "#4d9fff" }}>Engine</span>
             </div>
           </div>
 
           {/* Site status */}
-          <div style={{ display: "flex", gap: 24 }}>
+          <div className="mobile-hide" style={{ display: "flex", gap: 24 }}>
             {[
               ["SITE A", sites.site_a?.status],
               ["SITE B", sites.site_b?.status],
@@ -231,6 +276,19 @@ export default function App() {
             ))}
           </div>
 
+          {/* Site status dots only on mobile */}
+          <div className="mobile-status-dots" style={{ display: "none", gap: 6 }}>
+            {[
+              ["A", sites.site_a?.status],
+              ["B", sites.site_b?.status],
+              ["C", "online"],
+            ].map(([label, status]) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <StatusDot status={status || "offline"} />
+              </div>
+            ))}
+          </div>
+
           {/* Start button */}
           <button
             onClick={startJob}
@@ -242,45 +300,51 @@ export default function App() {
               padding: "10px 24px", borderRadius: 8, cursor: jobRunning ? "not-allowed" : "pointer",
               fontSize: 13, fontWeight: 700, transition: "all 0.3s ease",
               boxShadow: jobRunning ? "none" : "0 4px 15px rgba(0,232,122,0.3)",
-              display: "flex", alignItems: "center", gap: 8
+              display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap"
             }}
           >
             {jobRunning ? (
               <>
                 <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid #4a6070", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-                RUNNING...
+                <span className="mobile-hide">RUNNING...</span>
+                <span style={{ display: "none", fontSize: 10 }}>⋯</span>
               </>
-            ) : "▶ START RESOLUTION"}
+            ) : (
+              <>
+                <span className="mobile-hide">▶ START RESOLUTION</span>
+                <span style={{ display: "none", fontSize: 11 }}>▶</span>
+              </>
+            )}
           </button>
         </div>
 
         {/* TABS */}
-        <div style={{ 
+        <div className="tabs-scroll tabs-pad" style={{ 
           display: "flex", gap: 8, padding: "0 32px", 
           background: "rgba(10, 18, 30, 0.95)", backdropFilter: "blur(12px)",
           borderBottom: "1px solid #131e2c" 
         }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
+            <button key={t} onClick={() => setTab(t)} className="tab-text" style={{
               background: "none", border: "none", 
               borderBottom: tab === t ? "3px solid #4d9fff" : "3px solid transparent",
               color: tab === t ? "#ffffff" : "#4a6070", 
               padding: "14px 20px", cursor: "pointer",
               fontSize: 12, fontWeight: tab === t ? 700 : 500, 
-              letterSpacing: 0.5, transition: "all 0.2s",
+              letterSpacing: 0.5, transition: "all 0.2s", whiteSpace: "nowrap",
             }}>{t}</button>
           ))}
         </div>
       </div>
 
       {/* CONTENT */}
-      <div style={{ padding: "20px 28px" }}>
+      <div className="content-pad" style={{ padding: "20px 28px" }}>
 
         {/* ── DASHBOARD ── */}
         {tab === "Dashboard" && (
           <div style={{ animation: "fadein .3s ease" }}>
             {/* Stats row */}
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+            <div className="stat-grid" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
               <StatCard label="SITE A PAPERS" value={siteAStats?.papers?.toLocaleString()} color="#4d9fff" />
               <StatCard label="SITE B PAPERS" value={siteBStats?.papers?.toLocaleString()} color="#ff4d88" />
               <StatCard label="PAIRS PROCESSED" value={resStats?.total_pairs?.toLocaleString()} color="#aabbcc" />
@@ -294,7 +358,7 @@ export default function App() {
             </div>
 
             {/* Top merges */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="dash-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <div style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 10, color: "#2a5080", letterSpacing: 2, marginBottom: 12 }}>◈ TOP MERGED PAIRS</div>
                 {resStats?.top_merges?.slice(0, 6).map((m, i) => (
@@ -340,7 +404,7 @@ export default function App() {
         {/* ── RESOLUTION ── */}
         {tab === "Resolution" && (
           <div style={{ animation: "fadein .3s ease" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
+            <div className="dash-grid" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
               {/* Log */}
               <div style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 10, color: "#2a5080", letterSpacing: 2, marginBottom: 12 }}>
@@ -421,9 +485,10 @@ export default function App() {
         {tab === "Results" && (
           <div style={{ animation: "fadein .3s ease" }}>
             {/* Filter */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
               {["", "MERGE", "REVIEW", "SEPARATE"].map(d => (
                 <button key={d} onClick={() => { setFilterDecision(d); setResultPage(1); }}
+                  className="filter-btn"
                   style={{
                     background: filterDecision === d ? "rgba(77,159,255,.2)" : "transparent",
                     border: `1px solid ${filterDecision === d ? "#4d9fff" : "#1e2d40"}`,
@@ -441,14 +506,14 @@ export default function App() {
             </div>
 
             {/* Table */}
-            <div style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, overflow: "hidden" }}>
+            <div className="table-scroll" style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, overflow: "hidden" }}>
               <div style={{
                 display: "grid", gridTemplateColumns: "1fr 1fr 80px 90px",
                 padding: "8px 16px", borderBottom: "1px solid #131e2c",
                 fontSize: 9, color: "#2a4050", letterSpacing: 2,
               }}>
-                <span>TITLE A (DBLP)</span>
-                <span>TITLE B (SEMANTIC SCHOLAR)</span>
+                <span className="res-title-a">TITLE A (DBLP)</span>
+                <span className="res-title-b">TITLE B (SCHOLAR)</span>
                 <span>SCORE</span>
                 <span>DECISION</span>
               </div>
@@ -462,7 +527,7 @@ export default function App() {
                   <span style={{ color: "#4d9fff", paddingRight: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.title_a}
                   </span>
-                  <span style={{ color: "#ff4d88", paddingRight: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span className="res-title-b" style={{ color: "#ff4d88", paddingRight: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.title_b}
                   </span>
                   <span style={{ color: "#aabbcc" }}>{(r.score * 100).toFixed(1)}%</span>
@@ -477,9 +542,10 @@ export default function App() {
             </div>
 
             {/* Pagination */}
-            <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "center" }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
               {[1, 2, 3, 4, 5].map(p => (
                 <button key={p} onClick={() => setResultPage(p)}
+                  className="page-btn"
                   style={{
                     background: resultPage === p ? "rgba(77,159,255,.2)" : "transparent",
                     border: `1px solid ${resultPage === p ? "#4d9fff" : "#1e2d40"}`,
@@ -495,7 +561,7 @@ export default function App() {
         {/* ── METRICS ── */}
         {tab === "Metrics" && (
           <div style={{ animation: "fadein .3s ease" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="metrics-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
 
               {/* F1 */}
               <div style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, padding: 20 }}>
@@ -596,8 +662,8 @@ export default function App() {
               </span>
             </div>
 
-            <div style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, overflow: "hidden" }}>
-              <div style={{
+            <div className="table-scroll" style={{ background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, overflow: "hidden" }}>
+              <div className="res-header" style={{
                 display: "grid", gridTemplateColumns: "2fr 60px 100px 120px",
                 padding: "8px 16px", borderBottom: "1px solid #131e2c",
                 fontSize: 9, color: "#2a4050", letterSpacing: 2,
@@ -605,24 +671,25 @@ export default function App() {
                 <span>TITLE</span><span>YEAR</span><span>VENUE</span><span>DOI</span>
               </div>
               {papers.map((p, i) => (
-                <div key={i} style={{
+                <div key={i} className="data-table-cell" style={{
                   display: "grid", gridTemplateColumns: "2fr 60px 100px 120px",
                   padding: "9px 16px", borderBottom: "1px solid #0d1520",
                   fontSize: 11, background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,.01)",
                 }}>
-                  <span style={{ color: paperSite === "a" ? "#4d9fff" : "#ff4d88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
+                  <span className="data-table" style={{ color: paperSite === "a" ? "#4d9fff" : "#ff4d88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
                     {p.title}
                   </span>
-                  <span style={{ color: "#4a6070" }}>{p.year}</span>
-                  <span style={{ color: "#2a4050", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.venue}</span>
-                  <span style={{ color: "#1e3040", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.doi || "—"}</span>
+                  <span className="data-table" style={{ color: "#4a6070" }}>{p.year}</span>
+                  <span className="data-table" style={{ color: "#2a4050", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.venue}</span>
+                  <span className="data-table" style={{ color: "#1e3040", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.doi || "—"}</span>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "center" }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
               {[1,2,3,4,5,6,7,8,9,10].map(p => (
                 <button key={p} onClick={() => setPaperPage(p)}
+                  className="page-btn"
                   style={{
                     background: paperPage === p ? "rgba(77,159,255,.2)" : "transparent",
                     border: `1px solid ${paperPage === p ? "#4d9fff" : "#1e2d40"}`,

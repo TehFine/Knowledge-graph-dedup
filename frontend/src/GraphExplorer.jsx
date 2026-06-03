@@ -17,6 +17,13 @@ export function GraphExplorerTab() {
   const [clusters, setClusters] = useState(null);
   const [loading, setLoading] = useState("");
   const [graphBuilt, setGraphBuilt] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const buildGraph = async () => {
     setLoading("Building graph...");
@@ -42,6 +49,9 @@ export function GraphExplorerTab() {
     small: { fontSize: 10, color: "#4a6070" },
   };
 
+  const inputStyle = isMobile ? { ...S.input, width: 110 } : S.input;
+  const inputShortStyle = isMobile ? { ...S.input, width: 36 } : { ...S.input, width: 50 };
+
   return (
     <div style={{ animation: "fadein .3s ease" }}>
       {/* Build Graph */}
@@ -59,11 +69,11 @@ export function GraphExplorerTab() {
         <div style={S.label}>◈ TRAVERSAL CONTROLS</div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <label style={S.small}>Paper ID:</label>
-          <input style={S.input} value={paperId} onChange={e => setPaperId(e.target.value)} />
+          <input style={{...inputStyle}} value={paperId} onChange={e => setPaperId(e.target.value)} />
           <label style={S.small}>Depth:</label>
-          <input style={{ ...S.input, width: 50 }} type="number" value={depth} onChange={e => setDepth(+e.target.value)} min={1} max={5} />
+          <input style={inputShortStyle} type="number" value={depth} onChange={e => setDepth(+e.target.value)} min={1} max={5} />
           <label style={S.small}>Target:</label>
-          <input style={S.input} value={pathTarget} onChange={e => setPathTarget(e.target.value)} />
+          <input style={{...inputStyle}} value={pathTarget} onChange={e => setPathTarget(e.target.value)} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <button style={S.btn} onClick={runBFS}>BFS</button>
@@ -76,7 +86,7 @@ export function GraphExplorerTab() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="exp-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {/* BFS Result */}
         {bfs && (
           <div style={S.card}>

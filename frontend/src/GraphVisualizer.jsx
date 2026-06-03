@@ -335,30 +335,46 @@ export function GraphVisualizer() {
     setSelectedNode(node);
   };
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const S = {
     controls: {
-      position: "absolute", top: 20, left: 20, zIndex: 100,
+      position: "absolute", top: isMobile ? 10 : 20, left: isMobile ? 8 : 20, zIndex: 100,
       background: "rgba(10, 18, 30, 0.8)", backdropFilter: "blur(8px)",
-      border: "1px solid rgba(77, 159, 255, 0.2)", borderRadius: 10, padding: 12, width: 280
+      border: "1px solid rgba(77, 159, 255, 0.2)", borderRadius: 10,
+      padding: isMobile ? 8 : 12, width: isMobile ? 180 : 280,
+      fontSize: isMobile ? 9 : 11,
     },
     stageBtn: (active) => ({
-      width: "100%", textAlign: "left", padding: "8px 12px", marginBottom: 6, borderRadius: 6,
+      width: "100%", textAlign: "left", padding: isMobile ? "4px 8px" : "8px 12px",
+      marginBottom: 4, borderRadius: 4,
       background: active ? "rgba(77, 159, 255, 0.2)" : "transparent",
       border: `1px solid ${active ? "#4d9fff" : "#1e2d40"}`,
       color: active ? "#ffffff" : "#4a6070",
-      cursor: "pointer", fontSize: 11, fontWeight: 700, transition: "0.2s"
+      cursor: "pointer", fontSize: isMobile ? 9 : 11, fontWeight: 700, transition: "0.2s"
     }),
     panel: {
-      position: "absolute", top: 20, right: 20, bottom: 20, width: 340,
+      position: "absolute",
+      top: isMobile ? 'auto' : 20,
+      bottom: isMobile ? 0 : 20,
+      left: isMobile ? 0 : 'auto',
+      right: 0,
+      width: isMobile ? '100%' : 340,
+      maxHeight: isMobile ? '50%' : 'auto',
       background: "rgba(10, 18, 30, 0.85)", backdropFilter: "blur(12px)",
-      border: "1px solid rgba(77, 159, 255, 0.2)", borderRadius: 12,
-      padding: 20, overflowY: "auto", zIndex: 100,
+      border: "1px solid rgba(77, 159, 255, 0.2)", borderRadius: isMobile ? "12px 12px 0 0" : 12,
+      padding: isMobile ? 14 : 20, overflowY: "auto", zIndex: 100,
       boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
       animation: "fadein .3s ease"
     },
     label: { fontSize: 9, color: "#2a5080", letterSpacing: 2, marginBottom: 12, fontWeight: 700 },
-    val: { fontSize: 16, fontWeight: 700, color: "#ffffff", marginBottom: 4 },
-    small: { fontSize: 10, color: "#4a6070" },
+    val: { fontSize: isMobile ? 14 : 16, fontWeight: 700, color: "#ffffff", marginBottom: 4 },
+    small: { fontSize: isMobile ? 9 : 10, color: "#4a6070" },
     close: { position: "absolute", top: 12, right: 12, cursor: "pointer", color: "#4a6070", fontSize: 18 }
   };
 
@@ -428,9 +444,9 @@ export function GraphVisualizer() {
       {gestureEnabled && (
         <div style={{
           position: "absolute",
-          bottom: 80,
-          right: 20,
-          width: 240,
+          bottom: isMobile ? 60 : 80,
+          right: isMobile ? 8 : 20,
+          width: isMobile ? 160 : 240,
           background: "rgba(10, 18, 30, 0.85)",
           backdropFilter: "blur(12px)",
           border: "2px solid #00e87a",
@@ -458,7 +474,7 @@ export function GraphVisualizer() {
             </span>
           </div>
 
-          <div style={{ position: "relative", width: "100%", height: 160, background: "#05080c", borderRadius: 8, overflow: "hidden", border: "1px solid #1e2d40" }}>
+          <div style={{ position: "relative", width: "100%", height: isMobile ? 100 : 160, background: "#05080c", borderRadius: 8, overflow: "hidden", border: "1px solid #1e2d40" }}>
             <video 
               ref={videoRef} 
               autoPlay 
@@ -468,8 +484,8 @@ export function GraphVisualizer() {
             />
             <canvas 
               ref={canvasRef} 
-              width={220} 
-              height={160} 
+              width={isMobile ? 140 : 220} 
+              height={isMobile ? 100 : 160} 
               style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }} 
             />
           </div>
