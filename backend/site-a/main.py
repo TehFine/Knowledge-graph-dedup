@@ -1,17 +1,22 @@
 """
 Site A — DBLP Node
-FastAPI service cung cấp dữ liệu từ site_a.db
+FastAPI service cung cấp dữ liệu từ Supabase Project 1 (PostgreSQL)
 Port: 8001
 """
 
-import sqlite3, os, time
+import os, time
 from contextlib import contextmanager
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import psycopg2
+import psycopg2.extras
+from dotenv import load_dotenv
 
-DB_PATH = os.environ.get("DB_PATH", "./data/site_a.db")
+load_dotenv()
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
 SITE_ID = "site_a"
 
 app = FastAPI(title="Site A — DBLP", version="1.0")
@@ -19,12 +24,20 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL)
     try:
         yield conn
     finally:
         conn.close()
+
+def fetchall_dict(cursor):
+    cols = [desc[0] for desc in cursor.description]
+    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+def fetchone_dict(cursor):
+    cols = [desc[0] for desc in cursor.description]
+    row = cursor.fetchone()
+    return dict(zip(cols, row)) if row else None
 
 # ── Health ────────────────────────────────────────────────────
 @app.get("/health")
@@ -42,38 +55,37 @@ def list_papers(
     offset = (page - 1) * size
     filters, params = [], []
     if year:
-        filters.append("year = ?"); params.append(year)
+        filters.append("year = %s"); params.append(year)
     if venue:
-        filters.append("venue LIKE ?"); params.append(f"%{venue}%")
+        filters.append("venue LIKE %s"); params.append(f"%{venue}%")
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
-    with get_db() as db:
-        total = db.execute(f"SELECT COUNT(*) FROM papers {where}", params).fetchone()[0]
-        rows  = db.execute(
-            f"SELECT * FROM papers {where} LIMIT ? OFFSET ?",
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM papers {where}", params)
+        total = cur.fetchone()[0]
+        cur.execute(
+            f"SELECT * FROM papers {where} LIMIT %s OFFSET %s",
             params + [size, offset]
-        ).fetchall()
-    return {
-        "site": SITE_ID,
-        "total": total,
-        "page": page,
-        "size": size,
-        "data": [dict(r) for r in rows],
-    }
+        )
+        rows = fetchall_dict(cur)
+    return {"site": SITE_ID, "total": total, "page": page, "size": size, "data": rows}
 
 @app.get("/papers/{paper_id}")
 def get_paper(paper_id: str):
-    with get_db() as db:
-        row = db.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM papers WHERE id=%s", (paper_id,))
+        row = fetchone_dict(cur)
         if not row:
             raise HTTPException(404, "Paper not found")
-        authors = db.execute(
-            "SELECT author_id, author_name FROM paper_authors WHERE paper_id=?",
+        cur.execute(
+            "SELECT author_id, author_name FROM paper_authors WHERE paper_id=%s",
             (paper_id,)
-        ).fetchall()
-    result = dict(row)
-    result["authors"] = [dict(a) for a in authors]
-    return result
+        )
+        authors = fetchall_dict(cur)
+    row["authors"] = authors
+    return row
 
 # ── Authors ───────────────────────────────────────────────────
 @app.get("/authors")
@@ -85,22 +97,16 @@ def list_authors(
     offset = (page - 1) * size
     filters, params = [], []
     if name:
-        filters.append("name LIKE ?"); params.append(f"%{name}%")
+        filters.append("name LIKE %s"); params.append(f"%{name}%")
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
-    with get_db() as db:
-        total = db.execute(f"SELECT COUNT(*) FROM authors {where}", params).fetchone()[0]
-        rows  = db.execute(
-            f"SELECT * FROM authors {where} LIMIT ? OFFSET ?",
-            params + [size, offset]
-        ).fetchall()
-    return {
-        "site": SITE_ID,
-        "total": total,
-        "page": page,
-        "size": size,
-        "data": [dict(r) for r in rows],
-    }
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM authors {where}", params)
+        total = cur.fetchone()[0]
+        cur.execute(f"SELECT * FROM authors {where} LIMIT %s OFFSET %s", params + [size, offset])
+        rows = fetchall_dict(cur)
+    return {"site": SITE_ID, "total": total, "page": page, "size": size, "data": rows}
 
 # ── Candidates (blocking) ─────────────────────────────────────
 @app.get("/candidates")
@@ -115,41 +121,44 @@ def get_candidates(
     """
     filters, params = [], []
     if year:
-        filters.append("p.year = ?"); params.append(year)
+        filters.append("p.year = %s"); params.append(year)
     if name_prefix:
-        filters.append("pa.author_name LIKE ?"); params.append(f"{name_prefix}%")
+        filters.append("pa.author_name LIKE %s"); params.append(f"{name_prefix}%")
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
-    with get_db() as db:
-        rows = db.execute(f"""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
             SELECT DISTINCT p.id, p.title, p.year, p.venue, p.doi,
                    pa.author_name
             FROM papers p
             JOIN paper_authors pa ON p.id = pa.paper_id
             {where}
-            LIMIT ?
-        """, params + [limit]).fetchall()
+            LIMIT %s
+        """, params + [limit])
+        rows = fetchall_dict(cur)
 
-    return {"site": SITE_ID, "count": len(rows), "data": [dict(r) for r in rows]}
+    return {"site": SITE_ID, "count": len(rows), "data": rows}
 
 # ── Stats ─────────────────────────────────────────────────────
 @app.get("/stats")
 def stats():
-    with get_db() as db:
-        n_papers  = db.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
-        n_authors = db.execute("SELECT COUNT(*) FROM authors").fetchone()[0]
-        by_year   = db.execute(
-            "SELECT year, COUNT(*) as cnt FROM papers GROUP BY year ORDER BY year"
-        ).fetchall()
-        by_venue  = db.execute(
-            "SELECT venue, COUNT(*) as cnt FROM papers GROUP BY venue ORDER BY cnt DESC LIMIT 10"
-        ).fetchall()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM papers")
+        n_papers = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM authors")
+        n_authors = cur.fetchone()[0]
+        cur.execute("SELECT year, COUNT(*) as cnt FROM papers GROUP BY year ORDER BY year")
+        by_year = fetchall_dict(cur)
+        cur.execute("SELECT venue, COUNT(*) as cnt FROM papers GROUP BY venue ORDER BY cnt DESC LIMIT 10")
+        by_venue = fetchall_dict(cur)
     return {
         "site": SITE_ID,
         "papers": n_papers,
         "authors": n_authors,
-        "by_year": [dict(r) for r in by_year],
-        "top_venues": [dict(r) for r in by_venue],
+        "by_year": by_year,
+        "top_venues": by_venue,
     }
 
 # ── Graph Neighbors (for distributed traversal) ──────────────
@@ -160,31 +169,28 @@ def graph_neighbors(paper_id: str):
     Neighbor = papers cùng author (co-authorship graph).
     Dùng cho BFS/DFS distributed traversal.
     """
-    with get_db() as db:
-        # Tìm authors của paper này
-        authors = db.execute(
-            "SELECT author_id FROM paper_authors WHERE paper_id=?",
-            (paper_id,)
-        ).fetchall()
-        author_ids = [a["author_id"] for a in authors]
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT author_id FROM paper_authors WHERE paper_id=%s", (paper_id,))
+        author_ids = [row[0] for row in cur.fetchall()]
         if not author_ids:
             return {"paper_id": paper_id, "site": SITE_ID, "neighbors": []}
 
-        # Tìm papers khác cùng author
-        placeholders = ",".join(["?"] * len(author_ids))
-        rows = db.execute(f"""
+        placeholders = ",".join(["%s"] * len(author_ids))
+        cur.execute(f"""
             SELECT DISTINCT p.id, p.title, p.year, p.venue, p.doi,
                    pa.author_id as shared_author_id, pa.author_name as shared_author
             FROM papers p
             JOIN paper_authors pa ON p.id = pa.paper_id
-            WHERE pa.author_id IN ({placeholders}) AND p.id != ?
+            WHERE pa.author_id IN ({placeholders}) AND p.id != %s
             LIMIT 50
-        """, author_ids + [paper_id]).fetchall()
+        """, author_ids + [paper_id])
+        rows = fetchall_dict(cur)
 
     return {
         "paper_id": paper_id,
         "site": SITE_ID,
-        "neighbors": [dict(r) for r in rows],
+        "neighbors": rows,
         "edge_type": "co_authorship",
     }
 
@@ -196,20 +202,22 @@ def graph_edges(limit: int = Query(500, ge=1, le=5000)):
     Edge = (paper_i, paper_j) nếu share ít nhất 1 author.
     Dùng cho partitioning analysis và topology.
     """
-    with get_db() as db:
-        rows = db.execute(f"""
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
             SELECT DISTINCT pa1.paper_id as source, pa2.paper_id as target,
                    pa1.author_id as shared_author, pa1.author_name
             FROM paper_authors pa1
             JOIN paper_authors pa2 ON pa1.author_id = pa2.author_id
                                    AND pa1.paper_id < pa2.paper_id
-            LIMIT ?
-        """, (limit,)).fetchall()
+            LIMIT %s
+        """, (limit,))
+        rows = fetchall_dict(cur)
 
     return {
         "site": SITE_ID,
         "edge_count": len(rows),
-        "edges": [dict(r) for r in rows],
+        "edges": rows,
         "edge_type": "co_authorship",
     }
 
@@ -221,18 +229,20 @@ def get_document(paper_id: str):
     Bao gồm unstructured data: abstract, keywords, metadata mở rộng.
     Đây là phần "Document" trong Multi-Model Integration.
     """
-    with get_db() as db:
-        paper = db.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM papers WHERE id=%s", (paper_id,))
+        paper = fetchone_dict(cur)
         if not paper:
             raise HTTPException(404, "Paper not found")
-        authors = db.execute(
-            "SELECT author_id, author_name FROM paper_authors WHERE paper_id=?",
+        cur.execute(
+            "SELECT author_id, author_name FROM paper_authors WHERE paper_id=%s",
             (paper_id,)
-        ).fetchall()
+        )
+        authors = fetchall_dict(cur)
 
-    doc = dict(paper)
-    doc["authors"] = [dict(a) for a in authors]
-    doc["_meta"] = {
+    paper["authors"] = authors
+    paper["_meta"] = {
         "source": SITE_ID,
         "model": "document",
         "schema_version": "1.0",
@@ -244,4 +254,4 @@ def get_document(paper_id: str):
             "identifier": "doi",
         }
     }
-    return doc
+    return paper

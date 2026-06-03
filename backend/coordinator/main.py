@@ -8,8 +8,12 @@ Coordinator — Entity Resolution Engine
 Port: 8000
 """
 
-import os, json, time, asyncio, sqlite3
+import os, json, time, asyncio
 from contextlib import contextmanager
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
 from typing import Optional
 import httpx
 import networkx as nx
@@ -25,9 +29,10 @@ from graph_engine import (
 SITE_A = os.environ.get("SITE_A_URL", "http://localhost:8001")
 SITE_B = os.environ.get("SITE_B_URL", "http://localhost:8002")
 DATA_DIR = "./data"
-RESULT_DB = os.path.join(DATA_DIR, "results.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")  # Supabase Project 3
 QUEUE_FILE = os.path.join(DATA_DIR, "pending_queue.json")
 GT_FILE = os.path.join(DATA_DIR, "ground_truth.json")
+os.makedirs(DATA_DIR, exist_ok=True)
 
 TIMEOUT = 5.0  # giây timeout mỗi request tới site
 
@@ -50,47 +55,26 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 _graph_cache: Optional[nx.Graph] = None
 
 # ── Result DB ─────────────────────────────────────────────────
-RESULT_SCHEMA = """
-CREATE TABLE IF NOT EXISTS resolution_results (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    paper_a_id  TEXT,
-    paper_b_id  TEXT,
-    title_a     TEXT,
-    title_b     TEXT,
-    doi_a       TEXT,
-    doi_b       TEXT,
-    score       REAL,
-    decision    TEXT,
-    breakdown   TEXT,
-    created_at  REAL
-);
-CREATE TABLE IF NOT EXISTS jobs (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    status      TEXT DEFAULT 'pending',
-    year        INTEGER,
-    total_pairs INTEGER DEFAULT 0,
-    processed   INTEGER DEFAULT 0,
-    merged      INTEGER DEFAULT 0,
-    reviewed    INTEGER DEFAULT 0,
-    separated   INTEGER DEFAULT 0,
-    site_a_ok   INTEGER DEFAULT 1,
-    site_b_ok   INTEGER DEFAULT 1,
-    started_at  REAL,
-    finished_at REAL
-);
-"""
-
 @contextmanager
 def get_db():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(RESULT_DB)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(RESULT_SCHEMA)
-    conn.commit()
+    conn = psycopg2.connect(DATABASE_URL)
     try:
         yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
+
+def fetchall_dict(cursor):
+    cols = [desc[0] for desc in cursor.description]
+    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+def fetchone_dict(cursor):
+    cols = [desc[0] for desc in cursor.description]
+    row = cursor.fetchone()
+    return dict(zip(cols, row)) if row else None
 
 # ── Similarity Engine ─────────────────────────────────────────
 
@@ -227,7 +211,9 @@ async def run_resolution_job(years: list, limit_per_year: int, job_id: int):
             resolution_status["site_a"] = "online" if site_a_ok else "offline"
             resolution_status["site_b"] = "online" if site_b_ok else "offline"
 
-            add_log(f"Year {year} — Site A: {'✓' if site_a_ok else '✗'}  Site B: {'✓' if site_b_ok else '✗'}", "info")
+            ok_sym = '+' if site_a_ok else 'X'
+            ko_sym = '+' if site_b_ok else 'X'
+            add_log(f"Year {year} — Site A: [{ok_sym}]  Site B: [{ko_sym}]", "info")
 
             # Fetch candidates from both sites (parallel)
             candidates_a, candidates_b = await asyncio.gather(
@@ -280,17 +266,17 @@ async def run_resolution_job(years: list, limit_per_year: int, job_id: int):
 
             # Batch insert
             with get_db() as db:
-                db.executemany("""
+                cur = db.cursor()
+                cur.executemany("""
                     INSERT INTO resolution_results
                     (paper_a_id,paper_b_id,title_a,title_b,doi_a,doi_b,score,decision,breakdown,created_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, results_batch)
-                db.execute("""
-                    UPDATE jobs SET processed=?,merged=?,reviewed=?,separated=?,site_a_ok=?,site_b_ok=?
-                    WHERE id=?
+                cur.execute("""
+                    UPDATE jobs SET processed=%s,merged=%s,reviewed=%s,separated=%s,site_a_ok=%s,site_b_ok=%s
+                    WHERE id=%s
                 """, (stats["total"], stats["merged"], stats["reviewed"],
                       stats["separated"], int(site_a_ok), int(site_b_ok), job_id))
-                db.commit()
 
             add_log(
                 f"Year {year}: {len(results_batch)} pairs processed — "
@@ -317,8 +303,8 @@ async def run_resolution_job(years: list, limit_per_year: int, job_id: int):
 
     # Finish
     with get_db() as db:
-        db.execute("UPDATE jobs SET status='done', finished_at=? WHERE id=?", (time.time(), job_id))
-        db.commit()
+        cur = db.cursor()
+        cur.execute("UPDATE jobs SET status='done', finished_at=%s WHERE id=%s", (time.time(), job_id))
 
     add_log("─" * 40, "divider")
     add_log(f"Resolution complete — {stats['total']} pairs total", "system")
@@ -334,11 +320,13 @@ async def run_resolution_job(years: list, limit_per_year: int, job_id: int):
             edges_a = ea.json().get("edges", []) if ea.status_code == 200 else []
             edges_b = eb.json().get("edges", []) if eb.status_code == 200 else []
         with get_db() as db:
-            merges = db.execute(
+            cur = db.cursor()
+            cur.execute(
                 "SELECT paper_a_id, paper_b_id, score FROM resolution_results WHERE decision='MERGE'"
-            ).fetchall()
+            )
+            merges = fetchall_dict(cur)
         global _graph_cache
-        _graph_cache = build_knowledge_graph(edges_a, edges_b, [dict(r) for r in merges])
+        _graph_cache = build_knowledge_graph(edges_a, edges_b, merges)
         add_log(f"Graph built: {_graph_cache.number_of_nodes()} nodes, {_graph_cache.number_of_edges()} edges", "success")
     except Exception as e:
         add_log(f"Graph build failed: {e}", "warn")
@@ -361,12 +349,12 @@ async def start_resolution(req: StartJobRequest, bg: BackgroundTasks):
         return {"error": "Job already running"}
 
     with get_db() as db:
-        cur = db.execute(
-            "INSERT INTO jobs (status, started_at) VALUES ('running', ?)",
+        cur = db.cursor()
+        cur.execute(
+            "INSERT INTO jobs (status, started_at) VALUES ('running', %s) RETURNING id",
             (time.time(),)
         )
-        job_id = cur.lastrowid
-        db.commit()
+        job_id = cur.fetchone()[0]
 
     resolution_status["job_id"] = job_id
     resolution_status["processed"] = 0
@@ -389,34 +377,42 @@ def get_results(
     offset = (page - 1) * size
     filters, params = [], []
     if decision:
-        filters.append("decision = ?"); params.append(decision.upper())
+        filters.append("decision = %s"); params.append(decision.upper())
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
     with get_db() as db:
-        total = db.execute(f"SELECT COUNT(*) FROM resolution_results {where}", params).fetchone()[0]
-        rows  = db.execute(
-            f"SELECT * FROM resolution_results {where} ORDER BY score DESC LIMIT ? OFFSET ?",
+        cur = db.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM resolution_results {where}", params)
+        total = cur.fetchone()[0]
+        cur.execute(
+            f"SELECT * FROM resolution_results {where} ORDER BY score DESC LIMIT %s OFFSET %s",
             params + [size, offset]
-        ).fetchall()
+        )
+        rows = fetchall_dict(cur)
     return {
         "total": total,
         "page": page,
-        "data": [dict(r) for r in rows],
+        "data": rows,
     }
 
 @app.get("/resolution/stats", tags=["Entity Resolution"])
 def get_resolution_stats():
     with get_db() as db:
-        by_decision = db.execute("""
+        cur = db.cursor()
+        cur.execute("""
             SELECT decision, COUNT(*) as cnt, AVG(score) as avg_score
             FROM resolution_results GROUP BY decision
-        """).fetchall()
-        total = db.execute("SELECT COUNT(*) FROM resolution_results").fetchone()[0]
-        merged = db.execute("SELECT COUNT(*) FROM resolution_results WHERE decision='MERGE'").fetchone()[0]
-        top_merges = db.execute("""
+        """)
+        by_decision = fetchall_dict(cur)
+        cur.execute("SELECT COUNT(*) FROM resolution_results")
+        total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM resolution_results WHERE decision='MERGE'")
+        merged = cur.fetchone()[0]
+        cur.execute("""
             SELECT title_a, title_b, score FROM resolution_results
             WHERE decision='MERGE' ORDER BY score DESC LIMIT 10
-        """).fetchall()
+        """)
+        top_merges = fetchall_dict(cur)
 
     # Proper topology metrics from graph cache
     topo = {}
@@ -428,7 +424,7 @@ def get_resolution_stats():
 
     return {
         "total_pairs": total,
-        "by_decision": [dict(r) for r in by_decision],
+        "by_decision": by_decision,
         "edge_cut_ratio": edge_cut_ratio,
         "cross_site_edges": topo.get("edge_cut", {}).get("cross_site_edges", 0),
         "intra_site_edges": topo.get("edge_cut", {}).get("intra_site_edges", 0),
@@ -438,7 +434,7 @@ def get_resolution_stats():
         "mixed_clusters": cluster_info.get("mixed_site_clusters", 0),
         "graph_nodes": topo.get("nodes", 0),
         "graph_edges": topo.get("edges", 0),
-        "top_merges": [dict(r) for r in top_merges],
+        "top_merges": top_merges,
     }
 
 @app.get("/sites/status", tags=["System"])
@@ -464,9 +460,11 @@ def compute_f1():
     gt_pairs = {(p["site_a_id"], p["site_b_id"]) for p in gt["pairs"]}
 
     with get_db() as db:
-        merged = db.execute(
+        cur = db.cursor()
+        cur.execute(
             "SELECT paper_a_id, paper_b_id FROM resolution_results WHERE decision='MERGE'"
-        ).fetchall()
+        )
+        merged = fetchall_dict(cur)
 
     predicted = {(r["paper_a_id"], r["paper_b_id"]) for r in merged}
     tp = len(predicted & gt_pairs)
@@ -512,10 +510,11 @@ async def _build_graph():
             edges_a, edges_b = [], []
 
     with get_db() as db:
-        merges = db.execute(
+        cur = db.cursor()
+        cur.execute(
             "SELECT paper_a_id, paper_b_id, score FROM resolution_results WHERE decision='MERGE'"
-        ).fetchall()
-    cross = [dict(r) for r in merges]
+        )
+        cross = fetchall_dict(cur)
     _graph_cache = build_knowledge_graph(edges_a, edges_b, cross)
     return _graph_cache
 

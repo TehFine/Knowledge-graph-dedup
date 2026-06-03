@@ -9,10 +9,8 @@ services:
     container_name: kg_site_a
     ports:
       - "8001:8001"
-    volumes:
-      - ./data-pipeline/output/site_a.db:/app/data/site_a.db:ro
     environment:
-      DB_PATH: /app/data/site_a.db
+      DATABASE_URL: ${DATABASE_URL_SITE_A}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 10s
@@ -30,10 +28,8 @@ services:
     container_name: kg_site_b
     ports:
       - "8002:8002"
-    volumes:
-      - ./data-pipeline/output/site_b.db:/app/data/site_b.db:ro
     environment:
-      DB_PATH: /app/data/site_b.db
+      DATABASE_URL: ${DATABASE_URL_SITE_B}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
       interval: 10s
@@ -51,10 +47,8 @@ services:
     container_name: kg_coordinator
     ports:
       - "8000:8000"
-    volumes:
-      - ./data-pipeline/output/ground_truth.json:/app/data/ground_truth.json:ro
-      - coordinator_data:/app/data
     environment:
+      DATABASE_URL: ${DATABASE_URL_COORDINATOR}
       SITE_A_URL: http://site-a:8001
       SITE_B_URL: http://site-b:8002
     depends_on:
@@ -78,9 +72,6 @@ services:
       - coordinator
     networks:
       - kg_network
-
-volumes:
-  coordinator_data:
 
 networks:
   kg_network:
