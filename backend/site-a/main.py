@@ -6,9 +6,9 @@ Port: 8001
 
 import os, time
 from contextlib import contextmanager
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 from typing import Optional
 import psycopg2
 import psycopg2.extras
@@ -21,6 +21,15 @@ SITE_ID = "site_a"
 
 app = FastAPI(title="Site A — DBLP", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ── Ensure CORS headers on ALL responses, even 500 errors ──
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
 
 @contextmanager
 def get_db():

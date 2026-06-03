@@ -17,8 +17,9 @@ load_dotenv()
 from typing import Optional
 import httpx
 import networkx as nx
-from fastapi import FastAPI, BackgroundTasks, Query
+from fastapi import FastAPI, BackgroundTasks, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from graph_engine import (
     build_knowledge_graph, analyze_partitioning,
@@ -50,6 +51,15 @@ app = FastAPI(
     openapi_tags=tags_metadata
 )
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ── Ensure CORS headers on ALL responses, even 500 errors ──
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
 
 # Global graph cache
 _graph_cache: Optional[nx.Graph] = None
