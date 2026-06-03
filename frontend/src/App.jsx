@@ -3,6 +3,8 @@ import { GraphExplorerTab } from "./GraphExplorer";
 import { GraphVisualizer } from "./GraphVisualizer";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const SITE_A_URL = import.meta.env.VITE_SITE_A_URL || "http://localhost:8001";
+const SITE_B_URL = import.meta.env.VITE_SITE_B_URL || "http://localhost:8002";
 
 // ── API helpers ───────────────────────────────────────────────
 const get = async (path) => {
@@ -135,8 +137,8 @@ export default function App() {
     refreshAll();
     const siteStats = async () => {
       const [a, b] = await Promise.all([
-        fetch("http://localhost:8001/stats").then(r => r.json()).catch(() => null),
-        fetch("http://localhost:8002/stats").then(r => r.json()).catch(() => null),
+        fetch(`${SITE_A_URL}/stats`).then(r => r.json()).catch(() => null),
+        fetch(`${SITE_B_URL}/stats`).then(r => r.json()).catch(() => null),
       ]);
       if (a) setSiteAStats(a);
       if (b) setSiteBStats(b);
@@ -165,7 +167,7 @@ export default function App() {
 
   // ── Load papers ─────────────────────────────────────────────
   useEffect(() => {
-    const base = paperSite === "a" ? "http://localhost:8001" : "http://localhost:8002";
+    const base = paperSite === "a" ? SITE_A_URL : SITE_B_URL;
     fetch(`${base}/papers?page=${paperPage}&size=30`)
       .then(r => r.json())
       .then(d => { setPapers(d.data || []); setPapersTotal(d.total || 0); })
