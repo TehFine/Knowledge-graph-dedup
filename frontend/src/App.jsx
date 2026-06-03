@@ -193,9 +193,24 @@ export default function App() {
         ::-webkit-scrollbar-thumb{background:#1e2d40;border-radius:4px}
         * { box-sizing: border-box; }
         
-        .tabs-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .tabs-scroll {
+          overflow-x: auto; overflow-y: hidden;
+          -webkit-overflow-scrolling: touch; scrollbar-width: none;
+          scroll-behavior: smooth;
+        }
         .tabs-scroll::-webkit-scrollbar { display: none; }
-        .tabs-scroll button { flex-shrink: 0; }
+        @media (max-width: 768px) {
+          .tabs-scroll { mask-image: linear-gradient(to right, transparent, black 12px, black 90%, transparent); }
+        }
+        .tabs-scroll button { flex-shrink: 0; transition: all 0.2s; position: relative; }
+        .tabs-scroll button::after {
+          content: ''; position: absolute; bottom: 0; left: 50%;
+          width: 0; height: 3px; background: #4d9fff;
+          transition: all 0.25s ease; border-radius: 3px 3px 0 0;
+          transform: translateX(-50%);
+        }
+        .tabs-scroll button.active-tab::after { width: 60%; }
+        .tabs-scroll button:active { transform: scale(0.96); }
         .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .stat-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
         .stat-grid > * { flex: 1; min-width: 140px; }
@@ -211,6 +226,8 @@ export default function App() {
           .mobile-status-dots { display: flex !important; }
           .mobile-start-text { display: none !important; }
           .mobile-start-icon { display: inline !important; }
+          .tab-label-full { display: none !important; }
+          .tab-label-short { display: inline !important; }
           .content-pad { padding: 12px 12px; }
           .stat-grid > * { min-width: calc(50% - 8px); flex: 1 1 calc(50% - 8px); padding: 12px 14px; }
           .stat-grid > * > div { min-width: auto !important; }
@@ -220,7 +237,9 @@ export default function App() {
           .stat-val { font-size: 18px !important; }
           .header-title { font-size: 16px !important; }
           .header-sub { font-size: 7px !important; letter-spacing: 2px !important; }
-          .tab-text { font-size: 10px !important; padding: 10px 12px !important; }
+          .tab-text { font-size: 9px !important; padding: 10px 8px !important; letter-spacing: 0px !important; }
+          .tabs-scroll button { min-height: 44px; }
+          .tabs-scroll button::after { height: 2px; }
           .header-pad { padding: 12px 16px !important; }
           .tabs-pad { padding: 0 12px !important; gap: 4px !important; }
           .data-table { font-size: 9px !important; }
@@ -233,6 +252,8 @@ export default function App() {
           .legend-text { font-size: 8px !important; }
           .res-title-a { font-size: 7px !important; }
           .res-title-b { display: none !important; }
+          .tab-label-full { display: inline; }
+          .tab-label-short { display: none !important; }
         }
         @media (max-width: 480px) {
           .stat-grid > * { min-width: 100%; flex: 1 1 100%; }
@@ -325,14 +346,25 @@ export default function App() {
           borderBottom: "1px solid #131e2c" 
         }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} className="tab-text" style={{
-              background: "none", border: "none", 
-              borderBottom: tab === t ? "3px solid #4d9fff" : "3px solid transparent",
-              color: tab === t ? "#ffffff" : "#4a6070", 
-              padding: "14px 20px", cursor: "pointer",
-              fontSize: 12, fontWeight: tab === t ? 700 : 500, 
-              letterSpacing: 0.5, transition: "all 0.2s", whiteSpace: "nowrap",
-            }}>{t}</button>
+            <button key={t} onClick={() => setTab(t)}
+              className={`tab-text${tab === t ? ' active-tab' : ''}`}
+              style={{
+                background: "none", border: "none",
+                borderBottom: "3px solid transparent",
+                color: tab === t ? "#ffffff" : "#4a6070", 
+                padding: "14px 16px", cursor: "pointer",
+                fontSize: 12, fontWeight: tab === t ? 700 : 500, 
+                letterSpacing: 0.5, whiteSpace: "nowrap",
+              }}>
+              <span className="tab-label-full">{t}</span>
+              <span className="tab-label-short" style={{ display: 'none' }}>
+                {t === "Dashboard" ? "Home" :
+                 t === "Resolution" ? "Run" :
+                 t === "Graph Explorer" ? "Explore" :
+                 t === "Graph Visualizer" ? "Graph" :
+                 t === "Data Explorer" ? "Data" : t}
+              </span>
+            </button>
           ))}
         </div>
       </div>
