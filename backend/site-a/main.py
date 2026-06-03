@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_URL_SITE_A")
 SITE_ID = "site_a"
 
 app = FastAPI(title="Site A — DBLP", version="1.0")

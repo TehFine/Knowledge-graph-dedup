@@ -30,7 +30,7 @@ from graph_engine import (
 SITE_A = os.environ.get("SITE_A_URL", "http://localhost:8001")
 SITE_B = os.environ.get("SITE_B_URL", "http://localhost:8002")
 DATA_DIR = "./data"
-DATABASE_URL = os.environ.get("DATABASE_URL")  # Supabase Project 3
+DATABASE_URL = os.environ.get("DATABASE_URL_COORDINATOR")  # Supabase Project 3
 QUEUE_FILE = os.path.join(DATA_DIR, "pending_queue.json")
 GT_FILE = os.path.join(DATA_DIR, "ground_truth.json")
 os.makedirs(DATA_DIR, exist_ok=True)

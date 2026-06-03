@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_URL_SITE_B")
 SITE_ID = "site_b"
 
 app = FastAPI(title="Site B — Semantic Scholar", version="1.0")
