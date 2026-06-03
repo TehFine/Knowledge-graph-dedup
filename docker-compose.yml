@@ -10,7 +10,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      DATABASE_URL: ${DATABASE_URL_SITE_A}
+      DATABASE_URL_SITE_A: ${DATABASE_URL_SITE_A}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 10s
@@ -29,7 +29,7 @@ services:
     ports:
       - "8002:8002"
     environment:
-      DATABASE_URL: ${DATABASE_URL_SITE_B}
+      DATABASE_URL_SITE_B: ${DATABASE_URL_SITE_B}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
       interval: 10s
@@ -48,7 +48,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL_COORDINATOR}
+      DATABASE_URL_COORDINATOR: ${DATABASE_URL_COORDINATOR}
       SITE_A_URL: http://site-a:8001
       SITE_B_URL: http://site-b:8002
     depends_on:
