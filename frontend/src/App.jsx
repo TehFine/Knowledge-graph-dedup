@@ -252,8 +252,6 @@ export default function App() {
           .legend-text { font-size: 8px !important; }
           .res-title-a { font-size: 7px !important; }
           .res-title-b { display: none !important; }
-          .tab-label-full { display: inline; }
-          .tab-label-short { display: none !important; }
         }
         @media (max-width: 480px) {
           .stat-grid > * { min-width: 100%; flex: 1 1 100%; }
