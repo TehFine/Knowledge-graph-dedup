@@ -17,13 +17,6 @@ export function GraphExplorerTab() {
   const [clusters, setClusters] = useState(null);
   const [loading, setLoading] = useState("");
   const [graphBuilt, setGraphBuilt] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const buildGraph = async () => {
     setLoading("Building graph...");
@@ -32,29 +25,104 @@ export function GraphExplorerTab() {
     setLoading("");
   };
 
-  const runBFS = async () => { setLoading("BFS..."); setBfs(await get(`/graph/bfs?start=${paperId}&depth=${depth}`)); setLoading(""); };
-  const runDFS = async () => { setLoading("DFS..."); setDfs(await get(`/graph/dfs?start=${paperId}&depth=${depth}`)); setLoading(""); };
-  const runPath = async () => { setLoading("Path..."); setPath(await get(`/graph/path?source=${paperId}&target=${pathTarget}`)); setLoading(""); };
-  const runUnified = async () => { setLoading("Unified..."); setUnified(await get(`/unified/paper/${paperId}`)); setLoading(""); };
-  const runTopo = async () => { setLoading("Topology..."); setTopo(await get("/topology/analysis")); setLoading(""); };
-  const runPartition = async () => { setLoading("Partition..."); setPartition(await get("/partitioning/analyze")); setLoading(""); };
-  const runClusters = async () => { setLoading("Clusters..."); setClusters(await get("/topology/clusters")); setLoading(""); };
+  const runBFS      = async () => { setLoading("BFS...");      setBfs(await get(`/graph/bfs?start=${paperId}&depth=${depth}`)); setLoading(""); };
+  const runDFS      = async () => { setLoading("DFS...");      setDfs(await get(`/graph/dfs?start=${paperId}&depth=${depth}`)); setLoading(""); };
+  const runPath     = async () => { setLoading("Path...");     setPath(await get(`/graph/path?source=${paperId}&target=${pathTarget}`)); setLoading(""); };
+  const runUnified  = async () => { setLoading("Unified...");  setUnified(await get(`/unified/paper/${paperId}`)); setLoading(""); };
+  const runTopo     = async () => { setLoading("Topology...");  setTopo(await get("/topology/analysis")); setLoading(""); };
+  const runPartition= async () => { setLoading("Partition..."); setPartition(await get("/partitioning/analyze")); setLoading(""); };
+  const runClusters = async () => { setLoading("Clusters...");  setClusters(await get("/topology/clusters")); setLoading(""); };
 
-  const S = { card: { background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, padding: 16, marginBottom: 12 },
-    label: { fontSize: 10, color: "#2a5080", letterSpacing: 2, marginBottom: 10 },
-    btn: { background: "rgba(77,159,255,.15)", border: "1px solid #4d9fff33", color: "#4d9fff", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600 },
-    btnGreen: { background: "rgba(0,232,122,.15)", border: "1px solid #00e87a33", color: "#00e87a", padding: "8px 18px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 },
-    input: { background: "#0a1018", border: "1px solid #1e2d40", color: "#c0ccd8", padding: "6px 10px", borderRadius: 5, fontSize: 11, width: 160, fontFamily: "'JetBrains Mono', monospace" },
-    val: { fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" },
-    small: { fontSize: 10, color: "#4a6070" },
+  const S = {
+    card:     { background: "#0d1520", border: "1px solid #1e2d40", borderRadius: 10, padding: 16, marginBottom: 12 },
+    label:    { fontSize: 10, color: "#2a5080", letterSpacing: 2, marginBottom: 10 },
+    btn:      { background: "rgba(77,159,255,.15)", border: "1px solid #4d9fff33", color: "#4d9fff", padding: "8px 14px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600, flex: "1 1 auto", minWidth: 90, textAlign: "center" },
+    btnGreen: { background: "rgba(0,232,122,.15)", border: "1px solid #00e87a33", color: "#00e87a", padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 },
+    input:    { background: "#0a1018", border: "1px solid #1e2d40", color: "#c0ccd8", padding: "8px 10px", borderRadius: 5, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%" },
+    val:      { fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" },
+    small:    { fontSize: 10, color: "#4a6070" },
   };
-
-  const inputStyle = isMobile ? { ...S.input, width: 110 } : S.input;
-  const inputShortStyle = isMobile ? { ...S.input, width: 36 } : { ...S.input, width: 50 };
 
   return (
     <div style={{ animation: "fadein .3s ease" }}>
-      {/* Build Graph */}
+      {/* ── Scoped mobile CSS ── */}
+      <style>{`
+        /* Result panels: 2-col desktop → 1-col mobile */
+        .exp-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        /* Traversal control rows */
+        .exp-input-row {
+          display: grid;
+          grid-template-columns: 1fr 60px 1fr;
+          gap: 10px;
+          align-items: end;
+        }
+        .exp-btn-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-top: 12px;
+        }
+        /* Unified 3-col inner grid */
+        .exp-unified-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 15px;
+        }
+        /* Topo stats 3-col inner */
+        .exp-topo-stats {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+        /* Span 2 columns (unified card) */
+        .exp-span2 {
+          grid-column: span 2;
+        }
+
+        @media (max-width: 768px) {
+          /* Results: single column */
+          .exp-grid {
+            grid-template-columns: 1fr !important;
+          }
+          /* Unified card: no span override needed since grid is 1-col */
+          .exp-span2 {
+            grid-column: span 1 !important;
+          }
+          /* Traversal inputs: stack vertically */
+          .exp-input-row {
+            grid-template-columns: 1fr !important;
+          }
+          /* Buttons: 2 per row on mobile */
+          .exp-btn-row {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+          /* Unified inner 3-col → 1-col */
+          .exp-unified-grid {
+            grid-template-columns: 1fr !important;
+          }
+          /* Topo stats 3-col → 3-col but smaller */
+          .exp-topo-stats {
+            grid-template-columns: 1fr 1fr 1fr !important;
+            gap: 6px;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .exp-btn-row {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+          .exp-topo-stats {
+            grid-template-columns: 1fr 1fr 1fr !important;
+          }
+        }
+      `}</style>
+
+      {/* ── Build Graph ── */}
       <div style={S.card}>
         <div style={S.label}>◈ KNOWLEDGE GRAPH ENGINE</div>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -64,18 +132,28 @@ export function GraphExplorerTab() {
         </div>
       </div>
 
-      {/* Input controls */}
+      {/* ── Traversal Controls ── */}
       <div style={S.card}>
         <div style={S.label}>◈ TRAVERSAL CONTROLS</div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <label style={S.small}>Paper ID:</label>
-          <input style={{...inputStyle}} value={paperId} onChange={e => setPaperId(e.target.value)} />
-          <label style={S.small}>Depth:</label>
-          <input style={inputShortStyle} type="number" value={depth} onChange={e => setDepth(+e.target.value)} min={1} max={5} />
-          <label style={S.small}>Target:</label>
-          <input style={{...inputStyle}} value={pathTarget} onChange={e => setPathTarget(e.target.value)} />
+
+        {/* Input fields: 3-col on desktop, stack on mobile */}
+        <div className="exp-input-row">
+          <div>
+            <div style={{ ...S.small, marginBottom: 5 }}>Paper ID</div>
+            <input style={S.input} value={paperId} onChange={e => setPaperId(e.target.value)} placeholder="paper_00001" />
+          </div>
+          <div>
+            <div style={{ ...S.small, marginBottom: 5 }}>Depth</div>
+            <input style={{ ...S.input, textAlign: "center" }} type="number" value={depth} onChange={e => setDepth(+e.target.value)} min={1} max={5} />
+          </div>
+          <div>
+            <div style={{ ...S.small, marginBottom: 5 }}>Target (Shortest Path)</div>
+            <input style={S.input} value={pathTarget} onChange={e => setPathTarget(e.target.value)} placeholder="paper_00001_dup" />
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+
+        {/* Action buttons: 4-col desktop, 2-col mobile */}
+        <div className="exp-btn-row">
           <button style={S.btn} onClick={runBFS}>BFS</button>
           <button style={S.btn} onClick={runDFS}>DFS</button>
           <button style={S.btn} onClick={runPath}>SHORTEST PATH</button>
@@ -86,12 +164,14 @@ export function GraphExplorerTab() {
         </div>
       </div>
 
-      <div className="exp-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      {/* ── Results Grid ── */}
+      <div className="exp-grid">
+
         {/* BFS Result */}
         {bfs && (
           <div style={S.card}>
             <div style={S.label}>◈ DISTRIBUTED BFS</div>
-            <div style={{ display: "flex", gap: 20, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 20, marginBottom: 10, flexWrap: "wrap" }}>
               <div><span style={{ ...S.val, color: "#4d9fff" }}>{bfs.nodes_visited}</span> <span style={S.small}>nodes</span></div>
               <div><span style={{ ...S.val, color: "#ff4d88" }}>{bfs.cross_site_hops}</span> <span style={S.small}>cross-site hops</span></div>
             </div>
@@ -108,11 +188,11 @@ export function GraphExplorerTab() {
         {dfs && (
           <div style={S.card}>
             <div style={S.label}>◈ DISTRIBUTED DFS</div>
-            <div style={{ display: "flex", gap: 20, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 20, marginBottom: 10, flexWrap: "wrap" }}>
               <div><span style={{ ...S.val, color: "#bb88ff" }}>{dfs.nodes_visited}</span> <span style={S.small}>nodes</span></div>
               <div><span style={{ ...S.val, color: "#ff4d88" }}>{dfs.cross_site_hops}</span> <span style={S.small}>cross-site</span></div>
             </div>
-            <div style={{ fontSize: 10, color: "#4a6070" }}>
+            <div style={{ fontSize: 10, color: "#4a6070", wordBreak: "break-word" }}>
               Order: {dfs.traversal_order?.slice(0, 8).join(" → ")}
             </div>
           </div>
@@ -124,16 +204,19 @@ export function GraphExplorerTab() {
             <div style={S.label}>◈ SHORTEST PATH</div>
             {path.error ? <div style={{ color: "#ff3d5a", fontSize: 12 }}>{path.error}</div> : (
               <>
-                <div style={{ marginBottom: 8 }}>
-                  <span style={{ ...S.val, color: "#00e87a" }}>{path.path_length}</span> <span style={S.small}>hops</span>
-                  <span style={{ ...S.val, color: "#ff4d88", marginLeft: 16 }}>{path.cross_site_edges}</span> <span style={S.small}>cross-site</span>
+                <div style={{ marginBottom: 8, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div><span style={{ ...S.val, color: "#00e87a" }}>{path.path_length}</span> <span style={S.small}>hops</span></div>
+                  <div><span style={{ ...S.val, color: "#ff4d88" }}>{path.cross_site_edges}</span> <span style={S.small}>cross-site</span></div>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
                   {path.path?.map((n, i) => (
                     <span key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                      <span style={{
+                        fontSize: 10, padding: "2px 6px", borderRadius: 4,
                         background: n.site === "site_a" ? "rgba(77,159,255,.15)" : "rgba(255,77,136,.15)",
-                        color: n.site === "site_a" ? "#4d9fff" : "#ff4d88", border: `1px solid ${n.site === "site_a" ? "#4d9fff33" : "#ff4d8833"}` }}>
+                        color: n.site === "site_a" ? "#4d9fff" : "#ff4d88",
+                        border: `1px solid ${n.site === "site_a" ? "#4d9fff33" : "#ff4d8833"}`,
+                      }}>
                         {n.id}
                       </span>
                       {i < path.path.length - 1 && <span style={{ color: "#2a4050" }}>→</span>}
@@ -145,12 +228,12 @@ export function GraphExplorerTab() {
           </div>
         )}
 
-        {/* Unified View (Multi-Model) */}
+        {/* Unified View (Multi-Model) — spans 2 cols on desktop, 1 on mobile */}
         {unified && (
-          <div style={{ ...S.card, gridColumn: "span 2" }}>
+          <div style={{ ...S.card, marginBottom: 0 }} className="exp-span2">
             <div style={S.label}>◈ MULTI-MODEL UNIFIED VIEW (SEAMLESS INTEGRATION)</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 15 }}>
-              
+            <div className="exp-unified-grid">
+
               {/* 1. Relational Model */}
               <div style={{ padding: 12, borderRadius: 8, background: "rgba(77,159,255,.05)", border: "1px solid #4d9fff22" }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: "#4d9fff", marginBottom: 8, letterSpacing: 1 }}>SQL / RELATIONAL</div>
@@ -174,7 +257,6 @@ export function GraphExplorerTab() {
                 <div style={{ marginBottom: 10 }}>
                   <span style={{ ...S.val, color: "#00e87a", fontSize: 18 }}>{unified.models?.graph?.data?.degree}</span> <span style={S.small}>total connections</span>
                 </div>
-                
                 <div style={{ fontSize: 10, color: "#4a6070", marginBottom: 4 }}>SAME_AS LINKS (ENTITY RESOLUTION):</div>
                 {unified.models?.graph?.data?.same_as_links?.length > 0 ? (
                   unified.models?.graph?.data?.same_as_links.map(link => (
@@ -183,8 +265,7 @@ export function GraphExplorerTab() {
                     </div>
                   ))
                 ) : <div style={S.small}>No identity links found</div>}
-
-                <div style={{ fontSize: 10, color: "#4a6070", marginTop: 10, marginBottom: 4 }}>TOP NEIGHBORS (CO-AUTHORSHIP):</div>
+                <div style={{ fontSize: 10, color: "#4a6070", marginTop: 10, marginBottom: 4 }}>TOP NEIGHBORS:</div>
                 <div style={{ maxHeight: 100, overflowY: "auto", display: "flex", flexWrap: "wrap", gap: 4 }}>
                   {unified.models?.graph?.data?.neighbors?.slice(0, 15).map(n => (
                     <span key={n.id} style={{ fontSize: 9, padding: "2px 4px", borderRadius: 3, background: "#0a1018", color: "#4a6070", border: "1px solid #131e2c" }}>
@@ -203,7 +284,7 @@ export function GraphExplorerTab() {
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <div style={S.small}>SCHEMA METADATA:</div>
-                  <pre style={{ fontSize: 8, color: "#2a5080", margin: 0, marginTop: 4 }}>
+                  <pre style={{ fontSize: 8, color: "#2a5080", margin: 0, marginTop: 4, overflowX: "auto" }}>
                     {JSON.stringify(unified.models?.document?.data?._meta?.field_mapping, null, 2)}
                   </pre>
                 </div>
@@ -248,14 +329,14 @@ export function GraphExplorerTab() {
         {topo && !topo.error && (
           <div style={S.card}>
             <div style={S.label}>◈ DEEP TOPOLOGY ANALYSIS</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <div className="exp-topo-stats">
               {[
-                ["Nodes", topo.nodes, "#4d9fff"],
-                ["Edges", topo.edges, "#ff4d88"],
+                ["Nodes",      topo.nodes,                  "#4d9fff"],
+                ["Edges",      topo.edges,                  "#ff4d88"],
                 ["Avg Degree", topo.degree_stats?.avg_degree, "#bb88ff"],
               ].map(([l, v, c]) => (
-                <div key={l} style={{ textAlign: "center" }}>
-                  <div style={{ ...S.val, color: c, fontSize: 18 }}>{v}</div>
+                <div key={l} style={{ textAlign: "center", padding: "6px 4px", background: `${c}08`, borderRadius: 8, border: `1px solid ${c}18` }}>
+                  <div style={{ ...S.val, color: c, fontSize: 16 }}>{v}</div>
                   <div style={S.small}>{l}</div>
                 </div>
               ))}
@@ -277,18 +358,19 @@ export function GraphExplorerTab() {
         {clusters && (
           <div style={S.card}>
             <div style={S.label}>◈ CONNECTED COMPONENTS ({clusters.total} clusters)</div>
-            <div style={{ maxHeight: 200, overflowY: "auto" }}>
+            <div style={{ maxHeight: 220, overflowY: "auto" }}>
               {clusters.clusters?.map(c => (
-                <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "4px 0", borderBottom: "1px solid #0d1520" }}>
-                  <span style={{ color: c.is_cross_site ? "#00e87a" : "#4a6070" }}>Cluster #{c.id}</span>
-                  <span style={{ color: "#4d9fff" }}>{c.size} nodes</span>
-                  <span style={{ color: "#2a4050" }}>{c.edges} edges</span>
-                  <span style={{ fontSize: 9, color: c.is_cross_site ? "#00e87a" : "#2a4050" }}>{c.is_cross_site ? "CROSS-SITE" : "local"}</span>
+                <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "5px 0", borderBottom: "1px solid #0d1520", gap: 8 }}>
+                  <span style={{ color: c.is_cross_site ? "#00e87a" : "#4a6070", flexShrink: 0 }}>Cluster #{c.id}</span>
+                  <span style={{ color: "#4d9fff", flexShrink: 0 }}>{c.size} nodes</span>
+                  <span style={{ color: "#2a4050", flexShrink: 0 }}>{c.edges} edges</span>
+                  <span style={{ fontSize: 9, color: c.is_cross_site ? "#00e87a" : "#2a4050", flexShrink: 0 }}>{c.is_cross_site ? "CROSS" : "local"}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
