@@ -562,7 +562,15 @@ export function GraphVisualizer() {
 
               <div style={S.label}>◈ GRAPH CONTEXT</div>
               <div style={{ display: "flex", gap: 10, marginBottom: 15 }}>
-                <div><span style={{ fontSize: 16, fontWeight: 800, color: "#00e87a" }}>{unifiedData.models?.graph?.data?.degree}</span> <span style={S.small}>Degree</span></div>
+                <div><span style={{ fontSize: 16, fontWeight: 800, color: "#00e87a" }}>
+                  {selectedNode?.source_ids
+                    ? graphData.links.reduce((cnt, l) => {
+                        const s = typeof l.source === 'object' ? l.source?.id : l.source;
+                        const t = typeof l.target === 'object' ? l.target?.id : l.target;
+                        return cnt + (s === selectedNode.id || t === selectedNode.id ? 1 : 0);
+                      }, 0)
+                    : unifiedData?.models?.graph?.data?.degree}
+                </span> <span style={S.small}>Degree{selectedNode?.source_ids ? ' (merged)' : ''}</span></div>
               </div>
 
               <div style={S.label}>◈ DOCUMENT ABSTRACT</div>
