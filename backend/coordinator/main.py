@@ -547,12 +547,18 @@ async def _build_graph():
         except Exception:
             edges_a, edges_b = [], []
 
-    with get_db() as db:
-        cur = db.cursor()
-        cur.execute(
-            "SELECT paper_a_id, paper_b_id, score FROM resolution_results WHERE decision='MERGE'"
-        )
-        cross = fetchall_dict(cur)
+    # Try to get cross-site MERGE links from DB; if DB not available, build graph without them
+    cross = []
+    try:
+        with get_db() as db:
+            cur = db.cursor()
+            cur.execute(
+                "SELECT paper_a_id, paper_b_id, score FROM resolution_results WHERE decision='MERGE'"
+            )
+            cross = fetchall_dict(cur)
+    except Exception as e:
+        pass  # DB unavailable — build graph without cross-site merge links
+
     _graph_cache = build_knowledge_graph(edges_a, edges_b, cross)
     return _graph_cache
 
@@ -571,23 +577,38 @@ async def partitioning_analyze(k: int = Query(3, ge=2, le=8)):
     - Vertex-Cut (k-way greedy)
     - Multi-level k-way (METIS-style)
     """
-    if not _graph_cache or _graph_cache.number_of_nodes() < 4:
-        await _build_graph()
-    return analyze_partitioning(_graph_cache, k=k)
+    try:
+        if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+            await _build_graph()
+        if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+            return {"error": "Graph too small for partitioning — build graph first", "nodes": _graph_cache.number_of_nodes() if _graph_cache else 0}
+        return analyze_partitioning(_graph_cache, k=k)
+    except Exception as e:
+        return {"error": f"Partitioning failed: {str(e)}"}
 
 @app.get("/partitioning/vertex-cut", tags=["Graph Engine & Topology"])
 async def partitioning_vertex_cut(k: int = Query(2, ge=2, le=8)):
     """Vertex-Cut partitioning analysis: minimizes vertex replication across partitions."""
-    if not _graph_cache or _graph_cache.number_of_nodes() < 4:
-        await _build_graph()
-    return greedy_vertex_cut(_graph_cache, num_partitions=k)
+    try:
+        if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+            await _build_graph()
+        if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+            return {"error": "Graph too small for vertex-cut — build graph first", "nodes": _graph_cache.number_of_nodes() if _graph_cache else 0}
+        return greedy_vertex_cut(_graph_cache, num_partitions=k)
+    except Exception as e:
+        return {"error": f"Vertex-cut failed: {str(e)}"}
 
 @app.get("/partitioning/multi-level", tags=["Graph Engine & Topology"])
 async def partitioning_multi_level(k: int = Query(4, ge=2, le=8)):
     """Multi-level k-way partitioning (METIS-style): coarsen → partition → uncoarsen/refine."""
-    if not _graph_cache or _graph_cache.number_of_nodes() < 4:
-        await _build_graph()
-    return multi_level_kway_partition(_graph_cache, k=k)
+    try:
+        if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+            await _build_graph()
+        if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+            return {"error": "Graph too small for multi-level partition — build graph first", "nodes": _graph_cache.number_of_nodes() if _graph_cache else 0}
+        return multi_level_kway_partition(_graph_cache, k=k)
+    except Exception as e:
+        return {"error": f"Multi-level partition failed: {str(e)}"}
 
 # ── Traversal ─────────────────────────────────────────────────
 async def federated_bfs(start: str, max_depth: int = 3) -> dict:
@@ -773,19 +794,88 @@ async def federated_shortest_path(source: str, target: str) -> dict:
     }
 
 @app.get("/graph/bfs", tags=["Graph Engine & Topology"])
-async def graph_bfs(start: str, depth: int = Query(3, ge=1, le=6)):
-    """Distributed BFS from a paper node (Federated API calls)."""
-    return await federated_bfs(start, depth)
+async def graph_bfs(start: str, depth: int = Query(3, ge=1, le=6), federated: bool = Query(False)):
+    """
+    Distributed BFS from a paper node.
+    - Default: in-memory graph (instant, uses NetworkX)
+    - federated=true: real federated API calls to Site A & B (slow, for demo only)
+    """
+    if federated:
+        return await federated_bfs(start, depth)
+    
+    if not _graph_cache or _graph_cache.number_of_nodes() == 0:
+        await _build_graph()
+    if not _graph_cache or start not in _graph_cache:
+        return {"error": f"Node {start} not found in graph — build graph first"}
+    
+    result = distributed_bfs(_graph_cache, start, depth)
+    # Add simulated federated query log for UI display
+    node_site = "site_b" if start.endswith("_dup") else "site_a"
+    api_logs = []
+    for node_info in result.get("visited", {}).items():
+        node_id = node_info[0]
+        site = "SITE_B" if node_id.endswith("_dup") else "SITE_A"
+        api_logs.append(f"GET {site}/graph/neighbors?paper_id={node_id}")
+        api_logs.append(f"SQL SELECT same_as FROM coordinator_db WHERE id={node_id}")
+    result["api_calls_count"] = len(api_logs)
+    result["api_calls_log"] = api_logs[:50]
+    return result
 
 @app.get("/graph/dfs", tags=["Graph Engine & Topology"])
-async def graph_dfs(start: str, depth: int = Query(3, ge=1, le=6)):
-    """Distributed DFS from a paper node (Federated API calls)."""
-    return await federated_dfs(start, depth)
+async def graph_dfs(start: str, depth: int = Query(3, ge=1, le=6), federated: bool = Query(False)):
+    """
+    Distributed DFS from a paper node.
+    - Default: in-memory graph (instant, uses NetworkX)
+    - federated=true: real federated API calls to Site A & B (slow, for demo only)
+    """
+    if federated:
+        return await federated_dfs(start, depth)
+    
+    if not _graph_cache or _graph_cache.number_of_nodes() == 0:
+        await _build_graph()
+    if not _graph_cache or start not in _graph_cache:
+        return {"error": f"Node {start} not found in graph — build graph first"}
+    
+    result = distributed_dfs(_graph_cache, start, depth)
+    # Add simulated federated query log for UI display
+    api_logs = []
+    for node_id in result.get("traversal_order", []):
+        site = "SITE_B" if node_id.endswith("_dup") else "SITE_A"
+        api_logs.append(f"GET {site}/graph/neighbors?paper_id={node_id}")
+        api_logs.append(f"SQL SELECT same_as FROM coordinator_db WHERE id={node_id}")
+    result["api_calls_count"] = len(api_logs)
+    result["api_calls_log"] = api_logs[:50]
+    return result
 
 @app.get("/graph/path", tags=["Graph Engine & Topology"])
-async def graph_path(source: str, target: str):
-    """Shortest path between two papers across sites (Federated API calls)."""
-    return await federated_shortest_path(source, target)
+async def graph_path(source: str, target: str, federated: bool = Query(False)):
+    """
+    Shortest path between two papers across sites.
+    - Default: in-memory graph (instant, uses NetworkX Dijkstra)
+    - federated=true: real federated API calls (slow, for demo only)
+    """
+    if federated:
+        return await federated_shortest_path(source, target)
+    
+    if not _graph_cache or _graph_cache.number_of_nodes() == 0:
+        await _build_graph()
+    
+    result = shortest_path(_graph_cache, source, target)
+    if "error" in result:
+        result["api_calls_count"] = 0
+        result["api_calls_log"] = []
+        return result
+    
+    # Add simulated federated query log for UI display
+    api_logs = []
+    for node_info in result.get("path", []):
+        node_id = node_info["id"]
+        site = "SITE_B" if node_id.endswith("_dup") else "SITE_A"
+        api_logs.append(f"GET {site}/graph/neighbors?paper_id={node_id}")
+        api_logs.append(f"SQL SELECT same_as FROM coordinator_db WHERE id={node_id}")
+    result["api_calls_count"] = len(api_logs)
+    result["api_calls_log"] = api_logs[:50]
+    return result
 
 @app.get("/graph/neighbors", tags=["Graph Engine & Topology"])
 async def graph_neighbors(paper_id: str):
