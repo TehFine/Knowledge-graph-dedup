@@ -79,7 +79,7 @@ def greedy_vertex_cut(G: nx.Graph, num_partitions: int = 2) -> dict:
     replication_factor = round(sum_replications / max(total_vertices, 1), 3)
     
     sizes = [len(p) for p in partitions]
-    balance = round(min(sizes) / max(sizes, 1), 3) if max(sizes) > 0 else 1.0
+    balance = round(min(sizes) / max(sizes, default=1), 3) if max(sizes) > 0 else 1.0
     replicated_count = sum(1 for parts in vertex_partitions.values() if len(parts) > 1)
     
     return {
@@ -202,9 +202,8 @@ def multi_level_kway_partition(G: nx.Graph, k: int = 4) -> dict:
         "coarsening_rounds": len(coarsen_history),
         "partition_sizes": sizes,
         "edge_cut": edge_cut,
-        "edge_cut_ratio": round(edge_cut / max(total_edges, 1), 4),
-        "balance": round(min(sizes) / max(sizes, 1), 3) if max(sizes) > 0 else 1.0,
-        "balance_quality": "BALANCED" if min(sizes) / max(sizes, 1) > 0.5 else "SKEWED",
+        "edge_cut_ratio": round(edge_cut / max(total_edges, 1), 4),            "balance": round(min(sizes) / max(sizes, default=1), 3) if max(sizes) > 0 else 1.0,
+        "balance_quality": "BALANCED" if min(sizes) / max(sizes, default=1) > 0.5 else "SKEWED",
         "summary": f"Multi-level METIS: {k}-way partitioning via coarsening ({len(coarsen_history)} merges) → partition → uncoarsen/refine. Edge-cut: {edge_cut}/{total_edges} ({(edge_cut/max(total_edges,1)*100):.1f}%)"
     }
 
@@ -253,6 +252,22 @@ def analyze_partitioning(G: nx.Graph, k: int = 3) -> dict:
     if current_cut > 0:
         hop_reduction = round((current_cut - optimal_cut) / current_cut * 100, 1)
 
+    # Build result with aliases for frontend compatibility
+    edge_cut_kl_data = {
+        "algorithm": "Kernighan-Lin Bisection (edge-cut minimization)",
+        "type": "edge-cut",
+        "partition_a_nodes": len(opt_a),
+        "partition_b_nodes": len(opt_b),
+        "edge_cut": optimal_cut,
+        "edge_cut_ratio": round(optimal_cut / max(total_edges, 1), 4),
+        "balance": round(min(len(opt_a), len(opt_b)) /
+                       max(len(opt_a), len(opt_b), 1), 3),
+        "improvement": {
+            "hop_reduction_pct": hop_reduction,
+            "edges_saved": current_cut - optimal_cut,
+        }
+    }
+
     return {
         "algorithm_comparison": "Comprehensive: Edge-Cut (KL) + Vertex-Cut (k-way) + Multi-level METIS (k-way)",
         "total_nodes": G.number_of_nodes(),
@@ -267,20 +282,13 @@ def analyze_partitioning(G: nx.Graph, k: int = 3) -> dict:
             "balance": round(min(len(current_a), len(current_b)) /
                            max(len(current_a), len(current_b), 1), 3),
         },
-        "edge_cut_kl": {
-            "algorithm": "Kernighan-Lin Bisection (edge-cut minimization)",
-            "type": "edge-cut",
-            "partition_a_nodes": len(opt_a),
-            "partition_b_nodes": len(opt_b),
-            "edge_cut": optimal_cut,
-            "edge_cut_ratio": round(optimal_cut / max(total_edges, 1), 4),
-            "balance": round(min(len(opt_a), len(opt_b)) /
-                           max(len(opt_a), len(opt_b), 1), 3),
-            "improvement": {
-                "hop_reduction_pct": hop_reduction,
-                "edges_saved": current_cut - optimal_cut,
-            }
-        },
+        "edge_cut_kl": edge_cut_kl_data,
+        # Frontend expects 'optimal_partition' (alias for edge_cut_kl)
+        "optimal_partition": edge_cut_kl_data,
+        # Frontend expects 'vertex_cut' (alias for vertex_cut_2way)
+        "vertex_cut": vertex_cut_2way,
+        # Frontend expects 'improvement' at top level (alias for edge_cut_kl.improvement)
+        "improvement": edge_cut_kl_data["improvement"],
         "vertex_cut_2way": vertex_cut_2way,
         "vertex_cut_kway": vertex_cut_kway,
         "multi_level_kway": multi_kway,
