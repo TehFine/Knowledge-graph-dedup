@@ -21,6 +21,7 @@ export function GraphExplorerTab() {
   const [loading, setLoading] = useState("");
   const [graphBuilt, setGraphBuilt] = useState(false);
   const [kValue, setKValue] = useState(3);
+  const [showGuide, setShowGuide] = useState(false);
 
   const buildGraph = async () => {
     setLoading("Building graph...");
@@ -52,6 +53,128 @@ export function GraphExplorerTab() {
 
   return (
     <div style={{ animation: "fadein .3s ease" }}>
+
+      {/* ── HƯỚNG DẪN SỬ DỤNG GRAPH EXPLORER ── */}
+      <div style={{
+        background: "linear-gradient(135deg, #0d1a2a 0%, #091420 100%)",
+        border: "1px solid #1a3355",
+        borderRadius: 12, padding: "14px 18px",
+        marginBottom: 16, position: "relative", overflow: "hidden",
+      }}>
+        {/* Decorative glow */}
+        <div style={{
+          position: "absolute", top: -40, right: -40,
+          width: 120, height: 120, borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(77,159,255,0.08) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }} />
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: "#2a6090", letterSpacing: 2, fontWeight: 700 }}>
+             HƯỚNG DẪN SỬ DỤNG — GRAPH EXPLORER
+          </div>
+          <button
+            onClick={() => setShowGuide(!showGuide)}
+            style={{
+              background: "rgba(77,159,255,0.1)", border: "1px solid #4d9fff22",
+              color: "#4d9fff", padding: "4px 12px", borderRadius: 6,
+              cursor: "pointer", fontSize: 10, fontWeight: 600,
+              fontFamily: "'JetBrains Mono', monospace",
+              transition: "all 0.2s",
+            }}
+          >
+            {showGuide ? "△ THU GỌN" : "▽ MỞ RỘNG"}
+          </button>
+        </div>
+
+        {showGuide && (
+          <div style={{ animation: "fadein .3s ease" }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+              fontSize: 11, color: "#7a9ab8", lineHeight: 1.7,
+            }} className="guide-grid">
+
+              {/* Cột trái: Thuật toán traversal */}
+              <div>
+                <div style={{ fontSize: 9, color: "#4d9fff", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, borderBottom: "1px solid #1a2a40", paddingBottom: 4 }}>
+                   THUẬT TOÁN DUYỆT ĐỒ THỊ (TRAVERSAL ALGORITHMS)
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#4d9fff", fontWeight: 700 }}>• BFS</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Duyệt đồ thị theo chiều rộng (Breadth-First Search). Bắt đầu từ một paper, khám phá dần các neighbor theo từng mức depth. Hiển thị số nodes, cross-site hops (số lần vượt qua biên giới site A ↔ B), và federated query log mô phỏng chi phí truy vấn phân tán. Lý thuyết: Distributed Query Processing (Özsu & Valduriez Ch.6).</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#bb88ff", fontWeight: 700 }}>• DFS</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Duyệt đồ thị theo chiều sâu (Depth-First Search). Đi sâu vào một nhánh trước khi quay lui. Hiển thị traversal order và các cross-site edges. Phù hợp để khám phá cấu trúc liên kết sâu giữa các papers.</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#00e87a", fontWeight: 700 }}>• SHORTEST PATH</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Tìm đường đi ngắn nhất giữa 2 papers (Dijkstra). Hiển thị từng bước hop với màu sắc phân biệt site (xanh = Site A, hồng = Site B). Đo lường số hops, cross-site edges và chi phí network calls.</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#ffcc00", fontWeight: 700 }}>• UNIFIED VIEW</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Tích hợp <strong>3 mô hình dữ liệu</strong> trong một giao diện duy nhất: (1) <span style={{color:"#4d9fff"}}>Relational/SQL</span> — thông tin paper, authors; (2) <span style={{color:"#00e87a"}}>Graph/Network</span> — degree, neighbors, SAME_AS links; (3) <span style={{color:"#bb88ff"}}>Document/JSON</span> — abstract fragment, schema metadata. Kèm cross-model correlation insights phân tích sự tương quan giữa các mô hình.</span>
+                </div>
+              </div>
+
+              {/* Cột phải: Phân tích đồ thị nâng cao */}
+              <div>
+                <div style={{ fontSize: 9, color: "#00e87a", fontWeight: 700, letterSpacing: 1.5, marginBottom: 8, borderBottom: "1px solid #1a2a40", paddingBottom: 4 }}>
+                  ⚙ PHÂN TÍCH ĐỒ THỊ NÂNG CAO (ADVANCED ANALYSIS)
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#bb88ff", fontWeight: 700 }}>• TOPOLOGY</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Phân tích cấu trúc đồ thị toàn diện: edge-cut ratio, connected components, community detection (Louvain), bottleneck risk, locality ratio. Đo lường chất lượng phân vùng và chi phí truyền thông trong hệ thống phân tán.</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#ff3d5a", fontWeight: 700 }}>• PARTITION</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>So sánh 2 chiến lược phân vùng đồ thị (k-way partitioning): <strong>Edge-Cut</strong> (METIS/Kernighan-Lin) vs <strong>Vertex-Cut</strong> (Greedy). Hiển thị edge-cut ratio, replication factor, balance. Tham số k = số partitions. Lý thuyết: Distributed Database Design (Özsu & Valduriez Ch.4).</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#ff9944", fontWeight: 700 }}>• VERTEX-CUT</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Phân vùng dựa trên Vertex-Cut: các đỉnh có thể được replicated trên nhiều partitions để giảm chi phí truyền thông. Phù hợp với đồ thị có cấu trúc power-law (ít node kết nối nhiều).</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#00ccff", fontWeight: 700 }}>• MULTI-LEVEL</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span>Phân vùng đa mức (METIS-style): coarsening → partitioning → uncoarsening. Tối ưu edge-cut qua nhiều vòng lặp. Hiển thị số rounds coarsening và balance quality.</span>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "#00e87a", fontWeight: 700 }}>• CLUSTERS / COMMUNITIES</span>
+                  <span style={{ color: "#3a5a7a" }}> — </span>
+                  <span><strong>Clusters:</strong> Connected components thực tế trong đồ thị. <strong>Communities:</strong> Phát hiện cộng đồng bằng thuật toán Louvain (modularity maximization). Phân biệt local vs cross-site clusters.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer hướng dẫn */}
+            <div style={{
+              marginTop: 10, paddingTop: 8, borderTop: "1px solid #1a2a40",
+              display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8,
+              fontSize: 9, color: "#2a4a6a",
+            }}>
+              <span><strong>Cách dùng:</strong> Nhập Paper ID → chọn Depth/k → bấm nút tương ứng. Bắt đầu với <strong>BUILD GRAPH</strong> trước.</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Scoped mobile CSS ── */}
       <style>{`
         /* Result panels: 2-col desktop → 1-col mobile */
@@ -122,6 +245,18 @@ export function GraphExplorerTab() {
           .exp-topo-stats {
             grid-template-columns: 1fr 1fr 1fr !important;
             gap: 6px;
+          }
+        }
+
+        /* Guide: 2-col desktop → 1-col mobile */
+        .guide-grid {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+        }
+
+        @media (max-width: 768px) {
+          .guide-grid {
+            grid-template-columns: 1fr !important;
           }
         }
 
