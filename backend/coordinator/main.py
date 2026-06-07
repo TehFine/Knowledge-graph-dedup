@@ -25,6 +25,9 @@ from graph_engine import (
     build_knowledge_graph, analyze_partitioning,
     distributed_bfs, distributed_dfs, shortest_path,
     unified_paper_view, deep_topology_analysis,
+    greedy_vertex_cut, multi_level_kway_partition,
+    community_detection_louvain, extract_keywords,
+    compute_cross_model_correlation,
 )
 
 SITE_A = os.environ.get("SITE_A_URL", "http://localhost:8001")
@@ -36,6 +39,31 @@ GT_FILE = os.path.join(DATA_DIR, "ground_truth.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 TIMEOUT = 5.0  # giây timeout mỗi request tới site
+
+from collections import deque
+
+async def federated_get_neighbors(client: httpx.AsyncClient, paper_id: str, site: str) -> list:
+    url = SITE_A if site == "site_a" else SITE_B
+    try:
+        r = await client.get(f"{url}/graph/neighbors", params={"paper_id": paper_id}, timeout=TIMEOUT)
+        if r.status_code == 200:
+            return r.json().get("neighbors", [])
+    except Exception:
+        pass
+    return []
+
+def federated_get_same_as(paper_id: str) -> list[str]:
+    with get_db() as db:
+        cur = db.cursor()
+        cur.execute("""
+            SELECT paper_a_id, paper_b_id FROM resolution_results 
+            WHERE decision='MERGE' AND (paper_a_id = %s OR paper_b_id = %s)
+        """, (paper_id, paper_id))
+        rows = fetchall_dict(cur)
+    links = []
+    for r in rows:
+        links.append(r["paper_b_id"] if r["paper_a_id"] == paper_id else r["paper_a_id"])
+    return links
 
 tags_metadata = [
     {"name": "System", "description": "Kiểm tra trạng thái hệ thống và các node"},
@@ -536,33 +564,228 @@ async def build_graph():
 
 # ── Partitioning ──────────────────────────────────────────────
 @app.get("/partitioning/analyze", tags=["Graph Engine & Topology"])
-async def partitioning_analyze():
-    """METIS-style partitioning analysis comparing current vs optimal."""
+async def partitioning_analyze(k: int = Query(3, ge=2, le=8)):
+    """
+    Comprehensive graph partitioning analysis:
+    - Edge-Cut (Kernighan-Lin bisection)
+    - Vertex-Cut (k-way greedy)
+    - Multi-level k-way (METIS-style)
+    """
     if not _graph_cache or _graph_cache.number_of_nodes() < 4:
         await _build_graph()
-    return analyze_partitioning(_graph_cache)
+    return analyze_partitioning(_graph_cache, k=k)
+
+@app.get("/partitioning/vertex-cut", tags=["Graph Engine & Topology"])
+async def partitioning_vertex_cut(k: int = Query(2, ge=2, le=8)):
+    """Vertex-Cut partitioning analysis: minimizes vertex replication across partitions."""
+    if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+        await _build_graph()
+    return greedy_vertex_cut(_graph_cache, num_partitions=k)
+
+@app.get("/partitioning/multi-level", tags=["Graph Engine & Topology"])
+async def partitioning_multi_level(k: int = Query(4, ge=2, le=8)):
+    """Multi-level k-way partitioning (METIS-style): coarsen → partition → uncoarsen/refine."""
+    if not _graph_cache or _graph_cache.number_of_nodes() < 4:
+        await _build_graph()
+    return multi_level_kway_partition(_graph_cache, k=k)
 
 # ── Traversal ─────────────────────────────────────────────────
+async def federated_bfs(start: str, max_depth: int = 3) -> dict:
+    visited = {}
+    queue = deque([(start, 0)])
+    api_calls = []
+    cross_site_hops = 0
+    levels = {}
+    
+    async with httpx.AsyncClient() as client:
+        while queue:
+            node, depth = queue.popleft()
+            if node in visited or depth > max_depth:
+                continue
+                
+            node_site = "site_b" if node.endswith("_dup") else "site_a"
+            visited[node] = {
+                "depth": depth,
+                "site": node_site
+            }
+            levels.setdefault(depth, []).append(node)
+            
+            # Fetch local neighbors via API
+            api_calls.append(f"GET {node_site.upper()}/graph/neighbors?paper_id={node}")
+            local_neighbors = await federated_get_neighbors(client, node, node_site)
+            
+            # Fetch same_as links from Coordinator DB
+            api_calls.append(f"SQL SELECT same_as FROM coordinator_db WHERE id={node}")
+            same_as_links = federated_get_same_as(node)
+            
+            neighbors = []
+            for n in local_neighbors:
+                neighbors.append((n.get("id"), node_site))
+            for n in same_as_links:
+                dest_site = "site_a" if node_site == "site_b" else "site_b"
+                neighbors.append((n, dest_site))
+                
+            for nb_id, nb_site in neighbors:
+                if nb_id and nb_id not in visited:
+                    if nb_site != node_site:
+                        cross_site_hops += 1
+                    queue.append((nb_id, depth + 1))
+                    
+    return {
+        "algorithm": "True Distributed BFS (Federated)",
+        "start_node": start,
+        "max_depth": max_depth,
+        "nodes_visited": len(visited),
+        "cross_site_hops": cross_site_hops,
+        "api_calls_count": len(api_calls),
+        "api_calls_log": api_calls[:50],
+        "levels": {d: {"count": len(ns), "nodes": ns[:10]} for d, ns in levels.items()},
+        "visited": dict(list(visited.items())[:50]),
+    }
+
+async def federated_dfs(start: str, max_depth: int = 3) -> dict:
+    visited = {}
+    stack = [(start, 0)]
+    api_calls = []
+    cross_site_hops = 0
+    traversal_order = []
+    
+    async with httpx.AsyncClient() as client:
+        while stack:
+            node, depth = stack.pop()
+            if node in visited or depth > max_depth:
+                continue
+                
+            node_site = "site_b" if node.endswith("_dup") else "site_a"
+            visited[node] = {
+                "depth": depth,
+                "site": node_site
+            }
+            traversal_order.append(node)
+            
+            # Fetch local neighbors
+            api_calls.append(f"GET {node_site.upper()}/graph/neighbors?paper_id={node}")
+            local_neighbors = await federated_get_neighbors(client, node, node_site)
+            
+            # Fetch same_as links
+            api_calls.append(f"SQL SELECT same_as FROM coordinator_db WHERE id={node}")
+            same_as_links = federated_get_same_as(node)
+            
+            neighbors = []
+            for n in local_neighbors:
+                neighbors.append((n.get("id"), node_site))
+            for n in same_as_links:
+                dest_site = "site_a" if node_site == "site_b" else "site_b"
+                neighbors.append((n, dest_site))
+                
+            for nb_id, nb_site in neighbors:
+                if nb_id and nb_id not in visited:
+                    if nb_site != node_site:
+                        cross_site_hops += 1
+                    stack.append((nb_id, depth + 1))
+                    
+    return {
+        "algorithm": "True Distributed DFS (Federated)",
+        "start_node": start,
+        "max_depth": max_depth,
+        "nodes_visited": len(visited),
+        "cross_site_hops": cross_site_hops,
+        "api_calls_count": len(api_calls),
+        "api_calls_log": api_calls[:50],
+        "traversal_order": traversal_order[:30],
+        "visited": dict(list(visited.items())[:50]),
+    }
+
+async def federated_shortest_path(source: str, target: str) -> dict:
+    if source == target:
+        return {
+            "algorithm": "True Distributed Dijkstra/Shortest Path (Federated)",
+            "source": source,
+            "target": target,
+            "path_length": 0,
+            "cross_site_edges": 0,
+            "path": [{"id": source, "site": "site_b" if source.endswith("_dup") else "site_a"}],
+            "api_calls_count": 0,
+            "api_calls_log": []
+        }
+        
+    visited = {source: None}
+    queue = deque([source])
+    api_calls = []
+    found = False
+    
+    async with httpx.AsyncClient() as client:
+        while queue and not found:
+            node = queue.popleft()
+            node_site = "site_b" if node.endswith("_dup") else "site_a"
+            
+            api_calls.append(f"GET {node_site.upper()}/graph/neighbors?paper_id={node}")
+            local_neighbors = await federated_get_neighbors(client, node, node_site)
+            
+            api_calls.append(f"SQL SELECT same_as FROM coordinator_db WHERE id={node}")
+            same_as_links = federated_get_same_as(node)
+            
+            neighbors = []
+            for n in local_neighbors:
+                neighbors.append((n.get("id"), node_site))
+            for n in same_as_links:
+                dest_site = "site_a" if node_site == "site_b" else "site_b"
+                neighbors.append((n, dest_site))
+                
+            for nb_id, nb_site in neighbors:
+                if nb_id and nb_id not in visited:
+                    visited[nb_id] = node
+                    if nb_id == target:
+                        found = True
+                        break
+                    queue.append(nb_id)
+                    
+    if not found:
+        return {
+            "source": source,
+            "target": target,
+            "path_length": -1,
+            "error": "No path exists between these papers",
+            "api_calls_count": len(api_calls),
+            "api_calls_log": api_calls[:50]
+        }
+        
+    path = []
+    curr = target
+    while curr is not None:
+        path.append(curr)
+        curr = visited[curr]
+    path.reverse()
+    
+    path_details = [{"id": n, "site": "site_b" if n.endswith("_dup") else "site_a"} for n in path]
+    cross = sum(1 for i in range(len(path)-1)
+                if path_details[i]["site"] != path_details[i+1]["site"])
+                
+    return {
+        "algorithm": "True Distributed Dijkstra/Shortest Path (Federated)",
+        "source": source,
+        "target": target,
+        "path_length": len(path) - 1,
+        "cross_site_edges": cross,
+        "api_calls_count": len(api_calls),
+        "api_calls_log": api_calls[:50],
+        "path": path_details,
+    }
+
 @app.get("/graph/bfs", tags=["Graph Engine & Topology"])
 async def graph_bfs(start: str, depth: int = Query(3, ge=1, le=6)):
-    """Distributed BFS from a paper node."""
-    if not _graph_cache:
-        await _build_graph()
-    return distributed_bfs(_graph_cache, start, depth)
+    """Distributed BFS from a paper node (Federated API calls)."""
+    return await federated_bfs(start, depth)
 
 @app.get("/graph/dfs", tags=["Graph Engine & Topology"])
 async def graph_dfs(start: str, depth: int = Query(3, ge=1, le=6)):
-    """Distributed DFS from a paper node."""
-    if not _graph_cache:
-        await _build_graph()
-    return distributed_dfs(_graph_cache, start, depth)
+    """Distributed DFS from a paper node (Federated API calls)."""
+    return await federated_dfs(start, depth)
 
 @app.get("/graph/path", tags=["Graph Engine & Topology"])
 async def graph_path(source: str, target: str):
-    """Shortest path between two papers across sites."""
-    if not _graph_cache:
-        await _build_graph()
-    return shortest_path(_graph_cache, source, target)
+    """Shortest path between two papers across sites (Federated API calls)."""
+    return await federated_shortest_path(source, target)
 
 @app.get("/graph/neighbors", tags=["Graph Engine & Topology"])
 async def graph_neighbors(paper_id: str):
@@ -626,10 +849,17 @@ async def unified_view(paper_id: str):
 # ── Topology ──────────────────────────────────────────────────
 @app.get("/topology/analysis", tags=["Graph Engine & Topology"])
 async def topology_analysis():
-    """Deep topology analysis with proper edge-cut and cluster detection."""
+    """Deep topology analysis with edge-cut, clusters, and community detection (Louvain)."""
     if not _graph_cache or _graph_cache.number_of_nodes() < 2:
         await _build_graph()
     return deep_topology_analysis(_graph_cache)
+
+@app.get("/topology/communities", tags=["Graph Engine & Topology"])
+async def topology_communities():
+    """Community detection using Louvain method (Modularity Maximization)."""
+    if not _graph_cache or _graph_cache.number_of_nodes() < 3:
+        await _build_graph()
+    return community_detection_louvain(_graph_cache)
 
 @app.get("/topology/clusters", tags=["Graph Engine & Topology"])
 async def topology_clusters():
