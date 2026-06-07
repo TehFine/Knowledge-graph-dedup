@@ -12,7 +12,7 @@ const STAGES = [
 ];
 
 export function GraphVisualizer() {
-  const [stage, setStage] = useState("linked");
+  const [stage, setStage] = useState("raw");
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState(null);
