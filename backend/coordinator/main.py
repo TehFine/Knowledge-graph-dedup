@@ -324,20 +324,129 @@ async def run_resolution_job(years: list, limit_per_year: int, job_id: int):
 
             await asyncio.sleep(0.1)  # yield
 
-        # Retry pending queue
-        if pending_queue:
-            add_log(f"Retrying {len(pending_queue)} queued year(s)...", "warn")
+        # ── Retry queue with actual processing (auto-retry) ──
+        MAX_RETRY_ATTEMPTS = 30  # ~2.5 phút tối đa (30 lần × 5s)
+        retry_attempt = 0
+
+        while pending_queue and retry_attempt < MAX_RETRY_ATTEMPTS:
+            retry_attempt += 1
+            remaining = []
+
             for item in pending_queue:
                 site_a_ok = await check_site(client, SITE_A)
                 site_b_ok = await check_site(client, SITE_B)
-                if site_a_ok and site_b_ok:
-                    add_log(f"Both sites online — retrying year {item['year']}", "success")
-                    # (simplified: just log for demo)
-                    item["status"] = "retried"
-                else:
-                    add_log(f"Sites still down — year {item['year']} remains queued", "error")
+
+                if not site_a_ok or not site_b_ok:
+                    add_log(
+                        f"Retry #{retry_attempt}: Year {item['year']} — sites still offline, keeping in queue",
+                        "warn"
+                    )
+                    remaining.append(item)
+                    continue
+
+                # Both sites online — actually process the year
+                add_log(
+                    f"Retry #{retry_attempt}: Year {item['year']} — both sites online, processing...",
+                    "info"
+                )
+
+                try:
+                    candidates_a, candidates_b = await asyncio.gather(
+                        fetch_candidates(client, SITE_A, item['year'], limit_per_year),
+                        fetch_candidates(client, SITE_B, item['year'], limit_per_year),
+                    )
+
+                    # Blocking: nhóm theo 2 ký tự đầu của title
+                    blocks = {}
+                    for pa in candidates_a:
+                        key = (pa.get("title", "")[:2]).lower()
+                        blocks.setdefault(key, {"a": [], "b": []})["a"].append(pa)
+                    for pb in candidates_b:
+                        key = (pb.get("title", "")[:2]).lower()
+                        if key in blocks:
+                            blocks[key]["b"].append(pb)
+
+                    # Local stats để log riêng cho year retry này
+                    local_merged = 0
+                    local_reviewed = 0
+                    local_separated = 0
+                    results_batch = []
+
+                    for block_key, block in blocks.items():
+                        for pa in block["a"]:
+                            for pb in block["b"]:
+                                sim = compute_similarity(pa, pb)
+                                decision = decide(sim["total"])
+
+                                results_batch.append((
+                                    pa.get("id"), pb.get("id"),
+                                    pa.get("title"), pb.get("title"),
+                                    pa.get("doi"), pb.get("doi"),
+                                    sim["total"], decision,
+                                    json.dumps(sim["breakdown"]),
+                                    time.time()
+                                ))
+
+                                stats["total"] += 1
+                                if decision == "MERGE":
+                                    stats["merged"] += 1
+                                    local_merged += 1
+                                elif decision == "REVIEW":
+                                    stats["reviewed"] += 1
+                                    local_reviewed += 1
+                                else:
+                                    stats["separated"] += 1
+                                    local_separated += 1
+
+                                resolution_status["processed"] = stats["total"]
+
+                    # Batch insert
+                    with get_db() as db:
+                        cur = db.cursor()
+                        cur.executemany("""
+                            INSERT INTO resolution_results
+                            (paper_a_id,paper_b_id,title_a,title_b,doi_a,doi_b,score,decision,breakdown,created_at)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        """, results_batch)
+                        cur.execute("""
+                            UPDATE jobs SET processed=%s,merged=%s,reviewed=%s,separated=%s,site_a_ok=%s,site_b_ok=%s
+                            WHERE id=%s
+                        """, (stats["total"], stats["merged"], stats["reviewed"],
+                              stats["separated"], 1, 1, job_id))
+
+                    add_log(
+                        f"Year {item['year']}: retry complete — {len(results_batch)} pairs "
+                        f"(local: M:{local_merged} R:{local_reviewed} S:{local_separated} | "
+                        f"total: M:{stats['merged']} R:{stats['reviewed']} S:{stats['separated']})",
+                        "success"
+                    )
+                except Exception as e:
+                    add_log(
+                        f"Year {item['year']}: retry failed with error: {e} — re-queuing",
+                        "error"
+                    )
+                    remaining.append(item)
+
+            # Save updated queue file
+            pending_queue = remaining
             with open(QUEUE_FILE, "w") as f:
                 json.dump(pending_queue, f, indent=2)
+
+            # Nếu còn pending, chờ 5s rồi thử lại
+            if pending_queue and retry_attempt < MAX_RETRY_ATTEMPTS:
+                add_log(
+                    f"Waiting 5s before retry #{retry_attempt + 1} "
+                    f"({len(pending_queue)} year(s) remaining)...",
+                    "warn"
+                )
+                await asyncio.sleep(5)
+
+        if pending_queue:
+            add_log(
+                f"Max retries ({MAX_RETRY_ATTEMPTS}) reached — "
+                f"{len(pending_queue)} year(s) still pending. Manual retry required.",
+                "error"
+            )
 
     # Finish
     with get_db() as db:
