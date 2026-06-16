@@ -1,0 +1,28 @@
+name: Scheduled Health Check (Keep Alive)
+
+on:
+  schedule:
+    # Định kỳ mỗi 12 phút chạy một lần để ngăn Render ngủ đông (hạn mức 15 phút)
+    - cron: '*/12 * * * *'
+  # Cho phép kích hoạt chạy bằng tay bất cứ lúc nào trên giao diện Web của GitHub
+  workflow_dispatch: 
+
+jobs:
+  ping-distributed-system:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Đánh thức Coordinator (Dùng endpoint sites/status)
+        run: |
+          echo "Đang gọi Coordinator..."
+          curl -f -s --connect-timeout 60 --max-time 90 https://kg-coordinator.onrender.com/sites/status || echo "Coordinator đang khởi động hoặc hết thời gian chờ..."
+
+      - name: 2. Đánh thức Site A và Supabase 1 (Dùng endpoint stats)
+        run: |
+          echo "Đang gọi Site A..."
+          curl -f -s --connect-timeout 60 --max-time 90 https://kg-site-a.onrender.com/stats || echo "Site A đang khởi động hoặc hết thời gian chờ..."
+
+      - name: 3. Đánh thức Site B và Supabase 2 (Dùng endpoint stats)
+        run: |
+          echo "Đang gọi Site B..."
+          curl -f -s --connect-timeout 60 --max-time 90 https://kg-site-b.onrender.com/stats || echo "Site B đang khởi động hoặc hết thời gian chờ..."
